@@ -529,14 +529,15 @@ Adjust rates in the sidebar. Conservative defaults calibrated to match correlati
     total_b_vis = df['path_b_vis'].sum()
     total_amz_orders = t_funnel / amz_aov if amz_aov > 0 else 0
 
-    fig = go.Figure(go.Funnel(
-        y=['TTS Impressions','TTS Visitors','Non-Buyers','Path A: AMZ Visits','Path B: AMZ Visits','Est. AMZ Orders','Est. AMZ Sales'],
-        x=[timp, total_vis, max(total_non_buy,0), total_a_vis, total_b_vis, total_amz_orders, t_funnel],
-        textinfo='value+percentInitial',
-        texttemplate='%{value:,.0f}',
-        marker=dict(color=[PUR,BLU,YEL,GRN,GRN,RED,RED]),
+    funnel_labels = ['TTS Impressions','TTS Visitors','Non-Buyers','Path A: AMZ Visits','Path B: AMZ Visits','Est. AMZ Orders','Est. AMZ Sales']
+    funnel_vals = [timp, total_vis, max(total_non_buy,0), total_a_vis, total_b_vis, total_amz_orders, t_funnel]
+    funnel_colors = [PUR,BLU,YEL,GRN,GRN,RED,RED]
+    fig = go.Figure(go.Bar(
+        y=funnel_labels[::-1], x=funnel_vals[::-1], orientation='h',
+        marker=dict(color=funnel_colors[::-1], opacity=.8),
+        text=[fn(v) if i < 5 else fd(v) for i, v in enumerate(funnel_vals[::-1])],
+        textposition='outside', textfont=dict(size=10, family='JetBrains Mono', color=T1),
     ))
-    fig.update_layout(funnelmode='stack')
     st.plotly_chart(pthem(fig,400),use_container_width=True)
 
 # TAB 3: CORRELATION
