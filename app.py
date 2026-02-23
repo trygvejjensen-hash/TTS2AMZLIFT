@@ -225,7 +225,8 @@ def parse_amazon(fb):
 # ═══════════════ MODEL BUILDER ═══════════════
 
 def build_model(gmv_data, broadway, amazon_data, bm, cap_mult=4,
-                browse_rate=0.15, recall_rate=0.002, amz_conv=0.10, amz_aov=35):
+                browse_rate=0.15, recall_rate=0.002, amz_conv=0.10, amz_aov=35,
+                report_month=None):
     """Build the full model. Amazon brands = master list."""
 
     # Step 1: Get Amazon master brand list
@@ -274,11 +275,14 @@ def build_model(gmv_data, broadway, amazon_data, bm, cap_mult=4,
             content[brand][(c['year'],c['month'])]['likes']+=c['likes']
             if c['creator']:content[brand][(c['year'],c['month'])]['creators'].add(c['creator'])
 
-    # Latest content month
-    content_months = set()
-    for b,ms in content.items():
-        for k in ms: content_months.add(k)
-    latest = max(content_months) if content_months else (2026,1)
+    # Use selected report month (or auto-detect)
+    if report_month:
+        latest = report_month
+    else:
+        content_months = set()
+        for b,ms in content.items():
+            for k in ms: content_months.add(k)
+        latest = max(content_months) if content_months else (2026,1)
 
     # Step 4: Build brand models — ONLY for Amazon master brands
     master_brands = amz_brands if amz_brands else set(tts_monthly.keys())
@@ -424,6 +428,30 @@ if not amazon_data:
     st.error("Could not parse Amazon report. Check the file has a 'Brands > Aggregations' sheet with Start Date and Brand columns.")
     st.stop()
 
+# ═══════════════ MONTH SELECTOR ═══════════════
+# Detect available months from Broadway data
+avail_months = set()
+if broadway:
+    for p in broadway['pr']:
+        if p['year'] >= 2025 and p['month'] > 0:
+            avail_months.add((p['year'], p['month']))
+if not avail_months and gmv_data:
+    for row in gmv_data:
+        for (y, m) in row['monthly']:
+            if y >= 2025: avail_months.add((y, m))
+if not avail_months:
+    avail_months = {(2026, 1)}
+
+sorted_months = sorted(avail_months, reverse=True)
+month_options = [f"{MO[m-1]} {y}" for y, m in sorted_months]
+month_tuples = sorted_months
+
+sec("Select Reporting Month")
+sel_month_label = st.selectbox("Analyze lift for:", month_options, index=0)
+sel_month_idx = month_options.index(sel_month_label)
+selected_month = month_tuples[sel_month_idx]
+st.caption(f"All content, funnel, and attribution data below is for **{sel_month_label}** only.")
+
 # ═══════════════ SIDEBAR SETTINGS ═══════════════
 with st.sidebar:
     st.markdown(f'<span style="font:800 10px \'JetBrains Mono\',monospace;color:{RED};text-transform:uppercase;letter-spacing:.16em;">Model Settings</span>',unsafe_allow_html=True)
@@ -444,7 +472,7 @@ with st.sidebar:
 # Build model
 brands, latest = build_model(gmv_data, broadway, amazon_data, bm,
     cap_mult=cap_mult, browse_rate=browse_rate, recall_rate=recall_rate,
-    amz_conv=amz_conv, amz_aov=amz_aov)
+    amz_conv=amz_conv, amz_aov=amz_aov, report_month=selected_month)
 
 if not brands:
     st.error("No matching brands found. Check that brand names align across files.")
