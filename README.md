@@ -1,42 +1,50 @@
-# TTS → Amazon Lift Model
+# TikTok → Amazon Sales Lift Dashboard
 
-**Pattern × NextWave** — Data-driven attribution model measuring TikTok Shop's impact on Amazon sales.
-
-## What This Does
-
-Upload your monthly Broadway Tool (XLSM) and Amazon Report (XLSX) and the app automatically:
-- Calculates Pearson correlation between TTS GMV and Amazon sales (monthly, with lag analysis)
-- Sets brand-specific attribution rates based on correlation strength
-- Applies a 4x GMV cap to prevent over-attribution  
-- Shows the full TTS content funnel (impressions → visitors → videos → GMV)
-- Generates confidence scores per brand
+Measures incremental Amazon sales driven by TikTok activity using a rolling average baseline methodology.
 
 ## Quick Start
 
-1. Install requirements: `pip install -r requirements.txt`
-2. Run: `streamlit run app.py`
-3. Upload your Broadway Tool in the sidebar
-4. (Optional) Upload the Amazon monthly report for full correlation
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-## Deployment
+## How It Works
 
-This app is deployed on [Streamlit Cloud](https://share.streamlit.io). 
+1. **Baseline**: Rolling average of prior N months of Amazon sales per brand (default: 3 months)
+2. **Lift**: `Actual Sales - Baseline Sales`
+3. **Efficiency**: Lift ROAS, Cost per Lift Dollar, Lift per 1K Views/Impressions
+4. **Confidence Flags**: High / Medium / Low / Inconclusive based on data quality and external events
 
-## Monthly Workflow
+## Data Format
 
-1. Export the Broadway Tool XLSM from NextWave
-2. Export the Amazon Broadway report XLSX
-3. Upload both files in the sidebar
-4. Review updated attribution and download CSV
+Upload a CSV with these columns:
 
-## Model Methodology
+| Column | Required | Notes |
+|---|---|---|
+| `Brand` | ✅ | Brand name |
+| `Month` | ✅ | YYYY-MM format |
+| `Amazon_Sales` | ✅ | Total monthly Amazon revenue |
+| `TikTok_Spend` | ✅ | Paid media spend |
+| `TikTok_Impressions` | ✅ | From TikTok Ads Manager |
+| `TikTok_Views` | ✅ | Video views |
+| `TikTok_Engagements` | ✅ | Likes, shares, comments |
+| `TikTok_Clicks` | ✅ | Click-throughs |
+| `External_Event` | Optional | Prime Day, Holiday, etc. — flags lower confidence |
 
-| Correlation (r) | Attribution Rate | Confidence |
-|:---:|:---:|:---:|
-| r ≥ 0.8 | 17% | HIGH |
-| r ≥ 0.5 | 12% | MED |
-| r ≥ 0.3 | 6% | LOW |
-| r < 0.3 | 2% | WEAK |
-| < 3 months | 3% | INSUF |
+## File Structure
 
-**Cap Rule:** Attributed AMZ Sales = min(AMZ Sales × Rate, TTS GMV × 4)
+```
+tts-amazon-lift/
+├── app.py              # Streamlit dashboard
+├── lift_engine.py      # Core calculation engine (importable)
+├── sample_data.csv     # Test data (replace with your own)
+├── requirements.txt    # Python dependencies
+└── README.md           # This file
+```
+
+## Extending
+
+- **Change baseline method**: Edit `compute_rolling_baseline()` in `lift_engine.py`
+- **Add lag analysis**: Correlate TikTok metrics in week N with Amazon sales in weeks N+1, N+2, etc.
+- **Add data sources**: Extend the CSV schema and update validation in `lift_engine.py`
