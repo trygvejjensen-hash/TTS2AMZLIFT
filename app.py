@@ -11,26 +11,30 @@ from datetime import datetime
 
 st.set_page_config(page_title="TTS Amazon Lift Model", page_icon="📊", layout="wide")
 
-# ═══════════════ THEME ═══════════════
-BG='#07090E';S1='#0D1017';S2='#141820';BD='#1C2030'
-RED='#FF3B52';GRN='#00E5A0';YEL='#FFB020';BLU='#4DA6FF'
-PUR='#B07CFF';T1='#E8EAF0';T2='#7B8098';T3='#3E4460'
-CC={'HIGH':GRN,'MED':YEL,'LOW':'#FF8C42','WEAK':RED,'INSUF':T3}
+# ═══════════════ THEME — Pattern.com inspired ═══════════════
+BG='#0A0A0A';S1='#111111';S2='#1A1A1A';BD='#2A2A2A'
+# Pattern uses a dark black BG, white text, and coral/orange accent
+CORAL='#FF6B35';GRN='#34D399';YEL='#FBBF24';BLU='#60A5FA'
+PUR='#A78BFA';T1='#FFFFFF';T2='#9CA3AF';T3='#4B5563'
+CC={'HIGH':GRN,'MED':YEL,'LOW':'#FB923C','WEAK':'#EF4444','INSUF':T3}
 MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 st.markdown(f"""<style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=DM+Sans:wght@400;500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 .stApp{{background:{BG};}}
 section[data-testid="stSidebar"]{{background:{S1};border-right:1px solid {BD};}}
-h1,h2,h3{{font-family:'DM Sans',sans-serif!important;color:{T1}!important;}}
-.kpi{{background:{S1};border:1px solid {BD};border-radius:10px;padding:16px;text-align:center;}}
-.kpi .lb{{font:800 10px 'JetBrains Mono',monospace;color:{T2};text-transform:uppercase;letter-spacing:.1em;}}
-.kpi .vl{{font:800 26px 'JetBrains Mono',monospace;color:{T1};letter-spacing:-.03em;}}
-.kpi .vg{{font:800 26px 'JetBrains Mono',monospace;color:{GRN};letter-spacing:-.03em;}}
-.kpi .sb{{font:400 10px 'JetBrains Mono',monospace;color:{T3};margin-top:2px;}}
+h1,h2,h3{{font-family:'Inter',sans-serif!important;color:{T1}!important;font-weight:800!important;}}
+.kpi{{background:{S1};border:1px solid {BD};border-radius:12px;padding:18px;text-align:center;position:relative;}}
+.kpi .lb{{font:700 10px 'Inter',sans-serif;color:{T2};text-transform:uppercase;letter-spacing:.08em;}}
+.kpi .vl{{font:800 28px 'Inter',sans-serif;color:{T1};letter-spacing:-.02em;margin:4px 0;}}
+.kpi .vg{{font:800 28px 'Inter',sans-serif;color:{GRN};letter-spacing:-.02em;margin:4px 0;}}
+.kpi .sb{{font:400 10px 'Inter',sans-serif;color:{T3};}}
+.kpi .tip{{display:none;position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1F2937;color:#D1D5DB;padding:8px 12px;border-radius:8px;font:400 11px 'Inter',sans-serif;white-space:normal;width:220px;text-align:left;z-index:99;box-shadow:0 4px 12px rgba(0,0,0,.4);line-height:1.4;}}
+.kpi .tip::after{{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#1F2937;}}
+.kpi:hover .tip{{display:block;}}
 .stTabs [data-baseweb="tab-list"]{{gap:4px;}}
-.stTabs [data-baseweb="tab"]{{background:transparent;border:1px solid {BD};border-radius:6px;padding:5px 14px;font-size:11px;font-weight:700;color:{T2};}}
-.stTabs [aria-selected="true"]{{background:rgba(255,59,82,.08)!important;border-color:{RED}!important;color:{RED}!important;}}
+.stTabs [data-baseweb="tab"]{{background:transparent;border:1px solid {BD};border-radius:8px;padding:6px 16px;font-size:12px;font-weight:600;color:{T2};font-family:'Inter',sans-serif;}}
+.stTabs [aria-selected="true"]{{background:rgba(255,107,53,.08)!important;border-color:{CORAL}!important;color:{CORAL}!important;}}
 </style>""", unsafe_allow_html=True)
 
 # ═══════════════ HELPERS ═══════════════
@@ -49,15 +53,16 @@ def fn(v):
 def sf(v):
     try:return float(str(v).replace('$','').replace(',','').replace('%',''))
     except:return 0.0
-def kpi_h(lb,vl,sb="",g=False):
+def kpi_h(lb,vl,sb="",g=False,tip=""):
     vc="vg" if g else "vl"
-    return f'<div class="kpi"><div class="lb">{lb}</div><div class="{vc}">{vl}</div><div class="sb">{sb}</div></div>'
+    tip_html = f'<div class="tip">{tip}</div>' if tip else ''
+    return f'<div class="kpi">{tip_html}<div class="lb">{lb}</div><div class="{vc}">{vl}</div><div class="sb">{sb}</div></div>'
 def sec(t):
-    st.markdown(f'<div style="display:flex;align-items:center;gap:8px;margin:28px 0 10px;"><div style="width:3px;height:16px;background:{RED};border-radius:2px;"></div><span style="font:800 10px \'JetBrains Mono\',monospace;color:{RED};text-transform:uppercase;letter-spacing:.12em;">{t}</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div style="display:flex;align-items:center;gap:8px;margin:28px 0 10px;"><div style="width:3px;height:16px;background:{CORAL};border-radius:2px;"></div><span style="font:700 10px \'Inter\',sans-serif;color:{CORAL};text-transform:uppercase;letter-spacing:.12em;">{t}</span></div>',unsafe_allow_html=True)
 def badge_h(c):
-    return f'<span style="display:inline-block;font:800 9px \'JetBrains Mono\',monospace;padding:2px 8px;border-radius:3px;letter-spacing:.06em;background:{CC.get(c,T3)}15;color:{CC.get(c,T3)};">{c}</span>'
+    return f'<span style="display:inline-block;font:700 9px \'Inter\',sans-serif;padding:2px 8px;border-radius:4px;letter-spacing:.06em;background:{CC.get(c,T3)}15;color:{CC.get(c,T3)};">{c}</span>'
 def pthem(fig,h=350):
-    fig.update_layout(height=h,plot_bgcolor=BG,paper_bgcolor=BG,font=dict(family='JetBrains Mono,monospace',color=T2,size=10),margin=dict(l=10,r=10,t=20,b=10),hovermode='x unified',legend=dict(orientation='h',y=-0.12,font=dict(size=10)))
+    fig.update_layout(height=h,plot_bgcolor=BG,paper_bgcolor=BG,font=dict(family='Inter,sans-serif',color=T2,size=10),margin=dict(l=10,r=10,t=20,b=10),hovermode='x unified',legend=dict(orientation='h',y=-0.12,font=dict(size=10)))
     fig.update_xaxes(gridcolor=BD,showline=False);fig.update_yaxes(gridcolor=BD,showline=False)
     return fig
 
@@ -388,20 +393,20 @@ def build_model(gmv_data, broadway, amazon_data, bm, cap_mult=4,
 
 # ═══════════════ APP LAYOUT ═══════════════
 
-st.markdown(f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div style="width:7px;height:7px;border-radius:50%;background:{RED};box-shadow:0 0 12px rgba(255,59,82,.25);"></div><span style="font:800 10px \'JetBrains Mono\',monospace;color:{RED};text-transform:uppercase;letter-spacing:.16em;">Pattern x NextWave</span></div>',unsafe_allow_html=True)
+st.markdown(f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div style="width:7px;height:7px;border-radius:50%;background:{CORAL};box-shadow:0 0 12px rgba(255,107,53,.25);"></div><span style="font:700 10px \'Inter\',sans-serif;color:{CORAL};text-transform:uppercase;letter-spacing:.16em;">Pattern x NextWave</span></div>',unsafe_allow_html=True)
 st.markdown("# TTS to Amazon Lift Model")
 
 # ═══════════════ UPLOADS ═══════════════
 sec("Upload Monthly Data")
 c1,c2,c3 = st.columns(3)
 with c1:
-    st.markdown(f'<div style="background:{S1};border:2px dashed {BD};border-radius:12px;padding:14px 16px;text-align:center;"><span style="font:800 13px \'DM Sans\',sans-serif;color:{T1};">Monthly GMV</span><br><span style="font-size:10px;color:{T2};">TTS history (.csv)</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div style="background:{S1};border:2px dashed {BD};border-radius:12px;padding:14px 16px;text-align:center;"><span style="font:800 13px \'Inter\',sans-serif;color:{T1};">Monthly GMV</span><br><span style="font-size:10px;color:{T2};">TTS history (.csv)</span></div>',unsafe_allow_html=True)
     gmv_file=st.file_uploader("gmv",type=['csv'],label_visibility="collapsed",key="gmv")
 with c2:
-    st.markdown(f'<div style="background:{S1};border:2px dashed {BD};border-radius:12px;padding:14px 16px;text-align:center;"><span style="font:800 13px \'DM Sans\',sans-serif;color:{T1};">Broadway Tool</span><br><span style="font-size:10px;color:{T2};">Content metrics (.xlsm)</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div style="background:{S1};border:2px dashed {BD};border-radius:12px;padding:14px 16px;text-align:center;"><span style="font:800 13px \'Inter\',sans-serif;color:{T1};">Broadway Tool</span><br><span style="font-size:10px;color:{T2};">Content metrics (.xlsm)</span></div>',unsafe_allow_html=True)
     bw_file=st.file_uploader("bw",type=['xlsm','xlsx'],label_visibility="collapsed",key="bw")
 with c3:
-    st.markdown(f'<div style="background:{S1};border:2px dashed {BD};border-radius:12px;padding:14px 16px;text-align:center;"><span style="font:800 13px \'DM Sans\',sans-serif;color:{RED};">Amazon Report *</span><br><span style="font-size:10px;color:{T2};">Brand master + sales (.xlsx)</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div style="background:{S1};border:2px dashed {BD};border-radius:12px;padding:14px 16px;text-align:center;"><span style="font:800 13px \'Inter\',sans-serif;color:{CORAL};">Amazon Report *</span><br><span style="font-size:10px;color:{T2};">Brand master + sales (.xlsx)</span></div>',unsafe_allow_html=True)
     amz_file=st.file_uploader("amz",type=['xlsx'],label_visibility="collapsed",key="amz")
 
 if not amz_file:
@@ -454,7 +459,7 @@ st.caption(f"All content, funnel, and attribution data below is for **{sel_month
 
 # ═══════════════ SIDEBAR SETTINGS ═══════════════
 with st.sidebar:
-    st.markdown(f'<span style="font:800 10px \'JetBrains Mono\',monospace;color:{RED};text-transform:uppercase;letter-spacing:.16em;">Model Settings</span>',unsafe_allow_html=True)
+    st.markdown(f'<span style="font:700 10px \'Inter\',sans-serif;color:{CORAL};text-transform:uppercase;letter-spacing:.16em;">Model Settings</span>',unsafe_allow_html=True)
     st.markdown("---")
     st.markdown(f"**Correlation Model**")
     cap_mult = st.slider("GMV Cap Multiplier", 2, 8, 4, help="Attributed <= TTS x this")
@@ -481,7 +486,7 @@ if not brands:
 df = pd.DataFrame(brands).sort_values('jan_tts', ascending=False)
 ml = f"{MO[latest[1]-1]} {latest[0]}"
 
-st.markdown(f'<div style="margin:10px 0;font:700 11px \'DM Sans\',sans-serif;color:{T2};">{len(df)} Amazon brands matched | Data: {ml}</div>',unsafe_allow_html=True)
+st.markdown(f'<div style="margin:10px 0;font:700 11px \'Inter\',sans-serif;color:{T2};">{len(df)} Amazon brands matched | Data: {ml}</div>',unsafe_allow_html=True)
 
 # ═══════════════ KPIs ═══════════════
 ttts=df['jan_tts'].sum(); tamz=df['jan_amz'].sum()
@@ -489,14 +494,14 @@ t_corr=df['corr_attr'].sum(); t_funnel=df['funnel_attr'].sum()
 timp=df['impressions'].sum()
 
 cols = st.columns(6)
-with cols[0]: st.markdown(kpi_h("TTS GMV",fd(ttts),ml),unsafe_allow_html=True)
-with cols[1]: st.markdown(kpi_h("AMZ Sales",fd(tamz),"latest month"),unsafe_allow_html=True)
-with cols[2]: st.markdown(kpi_h("Corr. Attributed",fd(t_corr),f"{t_corr/tamz*100:.2f}% of AMZ" if tamz>0 else "",g=True),unsafe_allow_html=True)
-with cols[3]: st.markdown(kpi_h("Funnel Attributed",fd(t_funnel),f"{t_funnel/tamz*100:.2f}% of AMZ" if tamz>0 else "",g=True),unsafe_allow_html=True)
-with cols[4]: st.markdown(kpi_h("Impressions",fn(timp),"Broadway"),unsafe_allow_html=True)
+with cols[0]: st.markdown(kpi_h("TTS GMV",fd(ttts),ml,tip="Total Gross Merchandise Value sold through TikTok Shop for the selected month across all Amazon-matched brands."),unsafe_allow_html=True)
+with cols[1]: st.markdown(kpi_h("AMZ Sales",fd(tamz),"latest month",tip="Total Amazon sales revenue for the selected month across all matched brands. Sourced from the Amazon Broadway report."),unsafe_allow_html=True)
+with cols[2]: st.markdown(kpi_h("Corr. Attributed",fd(t_corr),f"{t_corr/tamz*100:.2f}% of AMZ" if tamz>0 else "",g=True,tip="Amazon sales attributed to TikTok Shop activity using Pearson correlation between monthly TTS and AMZ trends. Higher correlation = higher attribution rate (17% for r≥0.8, down to 2% for weak). Capped at 4x TTS GMV."),unsafe_allow_html=True)
+with cols[3]: st.markdown(kpi_h("Funnel Attributed",fd(t_funnel),f"{t_funnel/tamz*100:.2f}% of AMZ" if tamz>0 else "",g=True,tip="Amazon sales estimated via dual-path funnel: Path A = TTS visitors who didn't buy but later searched Amazon. Path B = viewers who saw TTS content and recalled the brand on Amazon. Uses configurable browse rate, recall rate, AMZ conversion, and AOV."),unsafe_allow_html=True)
+with cols[4]: st.markdown(kpi_h("Impressions",fn(timp),"Broadway",tip="Total content impressions from the Broadway Tool for the selected month. Counts every time TTS content was shown to a viewer across all matched brands."),unsafe_allow_html=True)
 with cols[5]:
     lift = t_corr/ttts if ttts>0 else 0
-    st.markdown(kpi_h("Lift / TTS $1",f"${lift:.2f}","correlation model"),unsafe_allow_html=True)
+    st.markdown(kpi_h("Lift / TTS $1",f"${lift:.2f}","correlation model",tip="For every $1 of TTS GMV generated, this is how many dollars of Amazon sales are attributed via the correlation model. Higher = stronger halo effect from TikTok to Amazon."),unsafe_allow_html=True)
 
 
 # ═══════════════ TABS ═══════════════
@@ -559,12 +564,12 @@ Adjust rates in the sidebar. Conservative defaults calibrated to match correlati
 
     funnel_labels = ['TTS Impressions','TTS Visitors','Non-Buyers','Path A: AMZ Visits','Path B: AMZ Visits','Est. AMZ Orders','Est. AMZ Sales']
     funnel_vals = [timp, total_vis, max(total_non_buy,0), total_a_vis, total_b_vis, total_amz_orders, t_funnel]
-    funnel_colors = [PUR,BLU,YEL,GRN,GRN,RED,RED]
+    funnel_colors = [PUR,BLU,YEL,GRN,GRN,CORAL,CORAL]
     fig = go.Figure(go.Bar(
         y=funnel_labels[::-1], x=funnel_vals[::-1], orientation='h',
         marker=dict(color=funnel_colors[::-1], opacity=.8),
         text=[fn(v) if i < 5 else fd(v) for i, v in enumerate(funnel_vals[::-1])],
-        textposition='outside', textfont=dict(size=10, family='JetBrains Mono', color=T1),
+        textposition='outside', textfont=dict(size=10, family='Inter', color=T1),
     ))
     st.plotly_chart(pthem(fig,400),use_container_width=True)
 
@@ -582,11 +587,11 @@ with tabs[2]:
             conf_color = CC.get(b['confidence'],T3)
             cl1,cl2 = st.columns([4,1])
             with cl1: st.markdown(f"**{b['brand']}** {badge_h(b['confidence'])} r = {b['r_best']:.3f} ({b['r_type']})",unsafe_allow_html=True)
-            with cl2: st.markdown(f"<span style='font:700 12px JetBrains Mono;color:{conf_color};'>{fd(b['corr_attr'])} attributed</span>",unsafe_allow_html=True)
+            with cl2: st.markdown(f"<span style='font:700 12px Inter;color:{conf_color};'>{fd(b['corr_attr'])} attributed</span>",unsafe_allow_html=True)
             fig = make_subplots(specs=[[{"secondary_y":True}]])
             fig.add_trace(go.Scatter(x=MO,y=b['amz_2025'],name='AMZ',fill='tozeroy',fillcolor='rgba(77,166,255,.06)',line=dict(color=BLU,width=2),marker=dict(size=3)),secondary_y=False)
             fig.add_trace(go.Scatter(x=MO,y=b['org_2025'],name='Organic',line=dict(color=GRN,width=1.5,dash='dash')),secondary_y=False)
-            fig.add_trace(go.Bar(x=MO,y=b['tts_2025'],name='TTS',marker=dict(color=RED,opacity=.75),width=.4),secondary_y=True)
+            fig.add_trace(go.Bar(x=MO,y=b['tts_2025'],name='TTS',marker=dict(color=CORAL,opacity=.75),width=.4),secondary_y=True)
             fig.update_yaxes(tickprefix='$',tickformat=',.0s',secondary_y=False)
             fig.update_yaxes(tickprefix='$',tickformat=',.0s',secondary_y=True)
             st.plotly_chart(pthem(fig,220),use_container_width=True)
@@ -617,7 +622,7 @@ with tabs[4]:
         with c1:
             st.markdown(f"#### {sel} Monthly (2025)")
             fig = go.Figure()
-            fig.add_trace(go.Bar(x=MO,y=b['tts_2025'],name='TTS GMV',marker=dict(color=RED,opacity=.75)))
+            fig.add_trace(go.Bar(x=MO,y=b['tts_2025'],name='TTS GMV',marker=dict(color=CORAL,opacity=.75)))
             fig.add_trace(go.Scatter(x=MO,y=b['amz_2025'],name='AMZ Sales',yaxis='y2',line=dict(color=BLU,width=2),marker=dict(size=3)))
             fig.update_layout(yaxis2=dict(overlaying='y',side='right',gridcolor='rgba(0,0,0,0)',showline=False,tickprefix='$',tickformat=',.0s'))
             fig.update_yaxes(tickprefix='$',tickformat=',.0s')
@@ -640,7 +645,7 @@ with tabs[4]:
             ]
             for lb,vl,co in mets:
                 if not lb: st.markdown(f"<div style='border-top:1px solid {BD};margin:6px 0;'></div>",unsafe_allow_html=True);continue
-                st.markdown(f'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid {BD};font:400 12px \'JetBrains Mono\',monospace;"><span style="color:{T2}">{lb}</span><span style="color:{co};font-weight:700">{vl}</span></div>',unsafe_allow_html=True)
+                st.markdown(f'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid {BD};font:400 12px \'Inter\',monospace;"><span style="color:{T2}">{lb}</span><span style="color:{co};font-weight:700">{vl}</span></div>',unsafe_allow_html=True)
 
         st.markdown("#### Monthly Detail (2025)")
         md = pd.DataFrame({'Month':MO,'TTS GMV':b['tts_2025'],'AMZ Sales':b['amz_2025'],'AMZ Organic':b['org_2025']})
@@ -653,4 +658,4 @@ ec = df[['brand','ps','jan_tts','tts_total','jan_amz','active_months','r_best','
 ec.columns = ['Brand','Type',f'TTS GMV ({ml})','2025 TTS Total','AMZ Sales','Active Mo.','r','Confidence','Corr Rate','Corr Attributed','Capped','Impressions','Visitors','Funnel Attributed','Funnel Path A','Funnel Path B']
 csv_out = ec.to_csv(index=False)
 st.download_button("Download Attribution Summary (CSV)",csv_out,"tts_lift_attribution.csv","text/csv")
-st.caption(f"Pattern x NextWave | TTS Amazon Lift Model v5 | {ml} | {len(df)} brands")
+st.caption(f"Pattern x NextWave | TTS → Amazon Lift Model v5 | {ml} | {len(df)} brands")
