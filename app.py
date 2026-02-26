@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from scipy import stats
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import csv, re, io
@@ -10,8 +11,9 @@ from datetime import datetime
 
 st.set_page_config(page_title="TTS Amazon Lift Model", page_icon="📊", layout="wide")
 
-# ═══════════════ THEME ═══════════════
+# ═══════════════ THEME — Pattern.com inspired ═══════════════
 BG='#0A0A0A';S1='#111111';S2='#1A1A1A';BD='#2A2A2A'
+# Pattern uses a dark black BG, white text, and coral/orange accent
 CORAL='#FF6B35';GRN='#34D399';YEL='#FBBF24';BLU='#60A5FA'
 PUR='#A78BFA';T1='#FFFFFF';T2='#9CA3AF';T3='#4B5563'
 CC={'HIGH':GRN,'MED':YEL,'LOW':'#FB923C','WEAK':'#EF4444','INSUF':T3}
@@ -64,9 +66,11 @@ def pthem(fig,h=350):
     fig.update_xaxes(gridcolor=BD,showline=False);fig.update_yaxes(gridcolor=BD,showline=False)
     return fig
 
-
 # ═══════════════ BRAND MAP ═══════════════
+# All known name variants → canonical name
+# Amazon report is the MASTER: only brands in Amazon report are included
 BRAND_MAP={
+    # Broadway shop → canonical
     'Thorne Health Shop':'Thorne Research','Pure Encapsulations Shop':'Pure Encapsulations',
     'Hims & Hers':'Hims & Hers','Vital Proteins Shop':'Vital Proteins',
     'youtheory':'YouTheory','Philips Shop US':'Philips','PHILIPS':'Philips',
@@ -77,15 +81,18 @@ BRAND_MAP={
     'Balance of Nature Shop':'Balance of Nature','AdvoCare':'AdvoCare',
     'Brownmed':'Brownmed','New Chapter Inc':'New Chapter',
     'Optimum Nutrition Shop':'Optimum Nutrition','Gaia Herbs':'Gaia',
+    # Amazon report → canonical
     'Atrium - Pure Encapsulations':'Pure Encapsulations','Dr Mercola':'Dr. Mercola',
     'Emerald Laboratories':'Emerald Labs','Herbs Etc.':'Herbs, Etc.',
     'Glanbia Performance Nutrition':'Optimum Nutrition',
     'Philips Avent':'Philips','Philips Norelco':'Philips','Philips Sonicare':'Philips',
     'Strider':'Strider Bikes','Youtheory':'YouTheory',
+    # GMV CSV → canonical
     'Advocare':'AdvoCare','Tru Niagen':'Tru Niagen',
     'Vital Proteins':'Vital Proteins','Sakura':'Sakura',
     'Thorne Research':'Thorne Research','Pure Encapsulations':'Pure Encapsulations',
-    'YouTheory':'YouTheory','SmartMouth':'SmartMouth','Strider Bikes':'Strider Bikes',
+    'Hims & Hers':'Hims & Hers','YouTheory':'YouTheory',
+    'SmartMouth':'SmartMouth','Strider Bikes':'Strider Bikes',
     'Dr. Mercola':'Dr. Mercola','Natural Factors':'Natural Factors',
     'Herbs, Etc.':'Herbs, Etc.','Emerald Labs':'Emerald Labs',
     'Balance of Nature':'Balance of Nature','AdvoCare':'AdvoCare',
@@ -93,6 +100,7 @@ BRAND_MAP={
     'Optimum Nutrition':'Optimum Nutrition','Gaia':'Gaia',
     'Amazing Grass':'Amazing Grass','Philips':'Philips',
 }
+
 def norm(name, bm):
     if not name or not str(name).strip(): return None
     name = str(name).strip()
@@ -110,31 +118,8 @@ MO_MAP={'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
         'july':7,'august':8,'september':9,'october':10,'november':11,'december':12,
         'jan':1,'feb':2,'mar':3,'apr':4,'jun':6,'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12}
 
-
-# ═══════════════ 2024 BASELINE (pre-TTS Amazon data) ═══════════════
-# Monthly organic sales, page views, ad spend, units for Jan-Dec 2024
-BASELINE_2024 = {
-    'AdvoCare': {'organic': [514438.83, 567508.45, 593442.22, 496137.12, 515082.92, 461819.87, 516927.72, 473747.35, 536583.29, 471417.66, 423053.95, 413966.13], 'page_views': [79541, 85602, 97650, 137386, 152580, 132947, 123152, 79633, 72812, 83202, 95621, 86742], 'ad_spend': [56889.71, 59389.08, 58600.3, 58900.2, 59141.17, 56051.49, 69770.11, 58231.44, 58689.96, 69129.65, 79256.03, 61285.54], 'units': [21162, 21727, 23796, 23773, 24249, 22871, 26992, 22780, 23676, 24855, 28598, 22948]},
-    'Balance of Nature': {'organic': [1469025.44, 1476008.68, 1735130.57, 1670531.98, 1618174.19, 1455884.94, 1344471.49, 1370574.89, 1347112.64, 1413678.64, 1448036.17, 1460203.75], 'page_views': [229397, 166793, 172684, 169383, 131058, 123959, 126943, 56274, 48568, 87923, 107898, 114895], 'ad_spend': [639876.82, 623605.87, 723099.32, 788195.58, 754680.62, 655783.3, 714659.53, 226750.11, 219882.16, 277640.08, 437294.6, 461939.6], 'units': [31454, 27461, 32092, 31507, 29708, 24995, 30496, 20805, 20027, 23621, 29716, 24765]},
-    'Brownmed': {'organic': [93557.66, 83744.43, 81217.75, 79244.69, 92742.67, 76666.65, 78497.33, 70703.05, 71646.23, 78371.56, 90897.46, 109969.04], 'page_views': [80430, 67114, 62003, 57493, 67669, 50439, 56687, 51666, 47473, 53048, 61202, 58422], 'ad_spend': [15844.86, 16021.74, 14018.89, 12861.62, 12905.2, 12983.95, 15669.0, 12866.76, 12766.73, 15795.55, 18118.71, 15540.67], 'units': [6560, 5663, 5371, 5225, 5872, 4871, 5552, 4877, 4793, 5660, 6614, 7090]},
-    'Emerald Labs': {'organic': [299239.85, 293062.25, 336429.43, 353238.68, 355719.89, 355119.65, 336891.48, 345405.76, 346931.16, 359594.25, 352624.69, 341657.58], 'page_views': [69459, 60506, 68978, 68136, 56416, 59283, 66545, 53229, 52993, 51544, 46778, 47806], 'ad_spend': [19803.47, 19706.15, 18844.14, 18155.24, 19559.58, 19627.32, 19997.07, 20129.11, 20165.32, 20047.3, 17729.79, 23671.98], 'units': [14494, 13980, 15426, 15138, 14852, 14295, 14930, 15293, 15330, 15493, 15113, 15084]},
-    'Gaia': {'organic': [1814948.12, 1927519.44, 1908470.54, 1970930.49, 2151425.16, 1937579.51, 2257750.59, 2161489.91, 2095009.64, 2147330.48, 2319699.21, 2372702.7], 'page_views': [908443, 613798, 641210, 598003, 575445, 507525, 607740, 514717, 514553, 546274, 510517, 514084], 'ad_spend': [615751.13, 353722.05, 375771.34, 350026.99, 355729.88, 310897.62, 425311.28, 372164.48, 345274.41, 428088.8, 422148.05, 449951.58], 'units': [116530, 103476, 103766, 103817, 108899, 96065, 104606, 106286, 103446, 105162, 104752, 104231]},
-    'Natural Factors': {'organic': [0, 0, 0, 0, 0, 392283.3, 898281.91, 980938.1, 955010.0, 1073022.72, 1132154.66, 1151041.58], 'page_views': [0, 0, 0, 0, 0, 91059, 202029, 206684, 196184, 218462, 207902, 208570], 'ad_spend': [0, 0, 0, 0, 0, 0, 58780.19, 78226.42, 68314.21, 113623.99, 76251.92, 73364.3], 'units': [0, 0, 0, 0, 0, 14445, 39693, 46799, 45831, 53289, 54333, 56436]},
-    'Optimum Nutrition': {'organic': [320207.21, 271660.99, 344342.19, 341598.82, 400389.29, 487505.16, 601143.74, 497771.04, 333667.14, 347187.49, 331351.68, 334260.07], 'page_views': [22634, 13583, 16779, 19912, 21623, 23974, 55161, 53523, 49019, 68267, 59953, 62851], 'ad_spend': [363.86, 1626.06, 6.76, 3.32, 0, 0, 0, 0, 0, 0, 0, 0], 'units': [7955, 6659, 8688, 8532, 10165, 12422, 15041, 13855, 7956, 6506, 6553, 7275]},
-    'Philips': {'organic': [0, 0, 0, 0, 0, 0, 6054.93, 88244.26, 178102.65, 162221.83, 457267.62, 397915.19], 'page_views': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 'ad_spend': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 'units': [0, 0, 0, 0, 0, 0, 144, 1336, 3002, 2643, 14738, 12156]},
-    'Pure Encapsulations': {'organic': [16287544.21, 14572545.44, 16108720.77, 15873726.06, 16402248.99, 16479088.86, 16467883.68, 15967074.04, 17551936.39, 18681341.18, 18674809.31, 19177267.29], 'page_views': [3618988, 3302257, 3289506, 3173431, 3142462, 2758562, 3168662, 3067700, 3096150, 3264343, 3241371, 3388475], 'ad_spend': [2416733.32, 2324141.84, 2544262.26, 2565358.76, 2584407.04, 2372190.05, 2707439.82, 2803608.62, 2457703.8, 2803701.9, 2731178.22, 3611254.45], 'units': [745439, 691274, 752198, 740944, 766157, 739953, 812381, 792358, 813790, 867782, 874044, 911048]},
-    'Sakura': {'organic': [800959.05, 562196.26, 607430.11, 605717.19, 583244.97, 511622.28, 666306.13, 659571.18, 583302.91, 589926.07, 883472.83, 1137321.52], 'page_views': [1122705, 920058, 893199, 852929, 910952, 814641, 943675, 709444, 615002, 679498, 1012791, 1045570], 'ad_spend': [72245.16, 67959.4, 60160.84, 52165.12, 51520.11, 61161.78, 69291.5, 91900.16, 73003.47, 87752.44, 85927.11, 88043.38], 'units': [85637, 68377, 65654, 65029, 61617, 58251, 75807, 80046, 66158, 69974, 94495, 120536]},
-    'SmartMouth': {'organic': [312135.82, 300211.42, 362597.83, 359819.47, 360963.45, 366789.31, 410272.87, 314358.01, 324445.52, 397777.01, 352433.61, 303491.67], 'page_views': [95678, 93366, 95745, 96261, 92445, 80792, 102245, 87393, 82096, 91440, 100500, 97474], 'ad_spend': [27885.78, 29853.67, 28959.7, 27672.94, 28253.25, 30025.69, 39548.75, 39331.3, 30734.15, 33806.7, 50389.36, 53596.63], 'units': [22386, 22676, 26578, 27939, 27265, 28425, 34855, 29782, 27311, 31861, 31121, 28375]},
-    'Strider Bikes': {'organic': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 275.47], 'page_views': [0, 0, 0, 0, 0, 748, 0, 0, 0, 0, 0, 0], 'ad_spend': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 'units': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2]},
-    'Thorne Research': {'organic': [8998977.16, 8535064.03, 9473840.93, 9465218.51, 10192502.58, 10502822.89, 11063872.01, 10603157.19, 10682269.86, 13812955.02, 13767253.68, 13661194.03], 'page_views': [3091796, 2760665, 2937635, 2784771, 2261422, 2471599, 3109541, 2197050, 2220538, 2822478, 2732928, 2755428], 'ad_spend': [1457393.88, 1428177.75, 1435657.09, 1485161.14, 1555164.13, 1551551.72, 1831902.88, 2213651.83, 2222328.17, 2694774.52, 1989871.41, 2031442.36], 'units': [579719, 545983, 575412, 580296, 584646, 570695, 601056, 583141, 581449, 692043, 688618, 710253]},
-    'YouTheory': {'organic': [0, 0, 0, 0, 957.72, 89528.5, 489988.62, 530388.03, 607980.83, 709357.21, 724415.01, 596355.5], 'page_views': [0, 0, 0, 1740, 67820, 259663, 285499, 269940, 348407, 445789, 420545, 356783], 'ad_spend': [0, 0, 0, 0, 0, 1535.7, 32499.51, 44096.48, 108747.45, 130175.63, 142951.92, 122632.85], 'units': [0, 0, 0, 0, 43, 4624, 32867, 34223, 43692, 57190, 59531, 54046]},
-}
-
-GMV_CAP_MULT = 5
-HALO_RATE = 0.25
-
-
 # ═══════════════ PARSERS ═══════════════
+
 @st.cache_data
 def parse_gmv_csv(fb):
     text=fb.decode('utf-8-sig');reader=csv.reader(io.StringIO(text));rows=list(reader)
@@ -186,8 +171,19 @@ def parse_broadway(fb):
                 'lives':sf(v[9]) if len(v)>9 else 0,
                 'month':int(sf(v[13])) if len(v)>13 and v[13] else 0,
                 'year':int(sf(v[15])) if len(v)>15 and v[15] else 0})
+    if 'Retainer Creator TAP Data' in wb.sheetnames:
+        for i,row in enumerate(wb['Retainer Creator TAP Data'].iter_rows(values_only=True)):
+            if i==0:continue
+            v=list(row)
+            if not v[0]:continue
+            ct.append({'creator':str(v[5]) if len(v)>5 and v[5] else '',
+                'shop':str(v[10]) if len(v)>10 and v[10] else '',
+                'views':sf(v[18]) if len(v)>18 else 0,
+                'likes':sf(v[19]) if len(v)>19 else 0,
+                'month':int(sf(v[24])) if len(v)>24 and v[24] else 0,
+                'year':int(sf(v[26])) if len(v)>26 and v[26] else 0})
     wb.close()
-    return {'pr':pr,'vr':vr}
+    return {'pr':pr,'vr':vr,'ct':ct}
 
 @st.cache_data
 def parse_amazon(fb):
@@ -216,8 +212,6 @@ def parse_amazon(fb):
     cs=fc(['start date']);cb=fc(['brand']);ct_col=fc(['total sales $','total sales'])
     cas=fc(['ad sales','advertising sales','sponsored sales'])
     cpv=fc(['total page view','page view'])
-    cad=fc(['ad spend'])
-    cunits=fc(['units'])
     if cs is None or cb is None or ct_col is None:return None
     data=[]
     for v in rows:
@@ -228,30 +222,31 @@ def parse_amazon(fb):
             sales=sf(v[ct_col]);ad_s=sf(v[cas]) if cas is not None else 0
             data.append({'year':s.year,'month':s.month,'brand_raw':str(v[cb]).strip(),
                 'sales':sales,'ad_sales':ad_s,'organic':sales-ad_s,
-                'page_views':sf(v[cpv]) if cpv is not None else 0,
-                'ad_spend':sf(v[cad]) if cad is not None else 0,
-                'units':sf(v[cunits]) if cunits is not None else 0})
+                'page_views':sf(v[cpv]) if cpv is not None else 0})
         except:continue
     return data
 
 
-# ═══════════════ MODEL v6 — YoY Pre/Post with 2024 Baseline ═══════════════
+# ═══════════════ MODEL BUILDER ═══════════════
 
-def build_model(gmv_data, broadway, amazon_data, bm, report_month=None):
-    # Parse Amazon 2025
-    amz = defaultdict(lambda: defaultdict(lambda:{'sales':0,'ad_sales':0,'organic':0,'page_views':0,'ad_spend':0,'units':0}))
+def build_model(gmv_data, broadway, amazon_data, bm, cap_mult=4,
+                browse_rate=0.15, recall_rate=0.002, amz_conv=0.10, amz_aov=35,
+                report_month=None):
+    """Build the full model. Amazon brands = master list."""
+
+    # Step 1: Get Amazon master brand list
+    amz_monthly = defaultdict(lambda: defaultdict(lambda:{'sales':0,'ad_sales':0,'organic':0,'page_views':0}))
     amz_brands = set()
     if amazon_data:
         for a in amazon_data:
             brand = norm(a['brand_raw'], bm)
             if not brand: continue
             amz_brands.add(brand)
-            d = amz[brand][(a['year'], a['month'])]
+            d = amz_monthly[brand][(a['year'], a['month'])]
             d['sales'] += a['sales']; d['ad_sales'] += a['ad_sales']
             d['organic'] += a['organic']; d['page_views'] += a['page_views']
-            d['ad_spend'] += a['ad_spend']; d['units'] += a['units']
 
-    # TTS monthly from GMV CSV
+    # Step 2: TTS monthly from GMV CSV
     tts_monthly = defaultdict(lambda: defaultdict(float))
     tts_meta = {}
     if gmv_data:
@@ -262,195 +257,135 @@ def build_model(gmv_data, broadway, amazon_data, bm, report_month=None):
             for (y,m),gmv in row['monthly'].items():
                 tts_monthly[brand][(y,m)] += gmv
 
-    # Content from Broadway
-    content_m = defaultdict(lambda: defaultdict(lambda:{'gmv':0,'impressions':0,'visitors':0,'affiliate_gmv':0,'videos':0,'lives':0}))
+    # Step 3: Content from Broadway
+    content = defaultdict(lambda: defaultdict(lambda:{'gmv':0,'impressions':0,'visitors':0,'affiliate_gmv':0,'videos':0,'lives':0,'views':0,'likes':0,'creators':set()}))
     if broadway:
         for p in broadway['pr']:
-            if p['year']<2024:continue
+            if p['year']<2025:continue
             brand=norm(p['shop'],bm)
             if not brand:continue
-            d=content_m[brand][(p['year'],p['month'])]
+            d=content[brand][(p['year'],p['month'])]
             d['gmv']+=p['gmv'];d['impressions']+=p['impressions'];d['visitors']+=p['visitors'];d['affiliate_gmv']+=p['affiliate_gmv']
         for v in broadway['vr']:
-            if v['year']<2024:continue
+            if v['year']<2025:continue
             brand=norm(v['shop'],bm)
             if not brand:continue
-            content_m[brand][(v['year'],v['month'])]['videos']+=v['videos']
-            content_m[brand][(v['year'],v['month'])]['lives']+=v['lives']
+            content[brand][(v['year'],v['month'])]['videos']+=v['videos']
+            content[brand][(v['year'],v['month'])]['lives']+=v['lives']
+        for c in broadway['ct']:
+            if c['year']<2025:continue
+            brand=norm(c['shop'],bm)
+            if not brand:continue
+            content[brand][(c['year'],c['month'])]['views']+=c['views']
+            content[brand][(c['year'],c['month'])]['likes']+=c['likes']
+            if c['creator']:content[brand][(c['year'],c['month'])]['creators'].add(c['creator'])
 
-    # Detect report month
+    # Use selected report month (or auto-detect)
     if report_month:
         latest = report_month
     else:
         content_months = set()
-        for b,ms in content_m.items():
+        for b,ms in content.items():
             for k in ms: content_months.add(k)
         latest = max(content_months) if content_months else (2026,1)
 
-    # Build per-brand
+    # Step 4: Build brand models — ONLY for Amazon master brands
     master_brands = amz_brands if amz_brands else set(tts_monthly.keys())
+
     brands = []
-
     for brand in sorted(master_brands):
-        meta = tts_meta.get(brand,{})
         tts_2025 = [tts_monthly[brand].get((2025,m),0) for m in range(1,13)]
-        total_tts = sum(tts_2025)
+        amz_2025 = [amz_monthly[brand].get((2025,m),{}).get('sales',0) for m in range(1,13)]
+        org_2025 = [amz_monthly[brand].get((2025,m),{}).get('organic',0) for m in range(1,13)]
+        active = sum(1 for v in tts_2025 if v > 0)
 
-        # 2025 Amazon data
-        post_organic = [amz[brand][(2025,m)]['organic'] for m in range(1,13)]
-        post_pv = [amz[brand][(2025,m)]['page_views'] for m in range(1,13)]
-        post_ad_spend = [amz[brand][(2025,m)]['ad_spend'] for m in range(1,13)]
-        post_units = [amz[brand][(2025,m)]['units'] for m in range(1,13)]
-        post_sales = [amz[brand][(2025,m)]['sales'] for m in range(1,13)]
-
-        # 2024 baseline
-        bl = BASELINE_2024.get(brand, None)
-        pre_organic = bl['organic'] if bl else [0]*12
-        pre_pv = bl['page_views'] if bl else [0]*12
-        pre_ad_spend = bl['ad_spend'] if bl else [0]*12
-        pre_units = bl['units'] if bl else [0]*12
-
-        has_baseline = bl is not None and sum(pre_organic) > 0
-        has_2025 = sum(post_organic) > 0
-        has_tts = total_tts > 1000
-
-        # TTS launch detection
-        all_tts = [tts_monthly[brand].get((2024,m),0) for m in range(1,13)] + tts_2025
-        launch_idx = None
-        for i, v in enumerate(all_tts):
-            if v > 500: launch_idx = i; break
-        launch_year = 2024 if launch_idx is not None and launch_idx < 12 else 2025
-        launch_month = ((launch_idx % 12) + 1) if launch_idx is not None else 0
-
-        # Latest month values
-        lc = content_m[brand].get(latest,{})
+        # Latest month content
+        lc = content[brand].get(latest,{})
         imp = lc.get('impressions',0) if isinstance(lc,dict) else 0
         vis = lc.get('visitors',0) if isinstance(lc,dict) else 0
         vid = lc.get('videos',0) if isinstance(lc,dict) else 0
         liv = lc.get('lives',0) if isinstance(lc,dict) else 0
+        cre = len(lc.get('creators',set())) if isinstance(lc,dict) and isinstance(lc.get('creators'),set) else 0
         aff = lc.get('affiliate_gmv',0) if isinstance(lc,dict) else 0
+
+        # Latest month TTS GMV
         jan_tts = tts_monthly[brand].get(latest,0)
         if jan_tts == 0: jan_tts = lc.get('gmv',0) if isinstance(lc,dict) else 0
-        jan_amz = amz[brand].get(latest,{}).get('sales',0)
+
+        # Latest month AMZ
+        jan_amz = amz_monthly[brand].get(latest,{}).get('sales',0)
+        # If no latest month AMZ, use last available
         if jan_amz == 0:
             for m in range(12,0,-1):
-                jan_amz = amz[brand].get((2025,m),{}).get('sales',0)
+                jan_amz = amz_monthly[brand].get((2025,m),{}).get('sales',0)
                 if jan_amz > 0: break
 
-        # ═══ ATTRIBUTION MODEL ═══
-        attributed_lift = 0; confidence = 'INSUF'; pv_signal = 'N/A'
-        unexplained = 0; ad_halo = 0; tts_share = 0
-        raw_attributed = 0; gmv_cap = 0; capped = False
-        inc_pv = 0; inc_units = 0
-        total_org_pct = 0; pv_change_pct = 0; ad_spend_pct = 0
+        meta = tts_meta.get(brand,{})
 
-        if has_baseline and has_2025:
-            t_pre_org = sum(pre_organic); t_post_org = sum(post_organic)
-            total_org_change = t_post_org - t_pre_org
-            total_org_pct = total_org_change / t_pre_org if t_pre_org > 0 else 0
+        # ── CORRELATION MODEL ──
+        r_best=0;r_type='same';conf='INSUF';corr_rate=0.03
+        corr_attr=0;corr_capped=False
+        if active >= 3 and any(v>0 for v in amz_2025):
+            ta=np.array(tts_2025,dtype=float);aa=np.array(amz_2025,dtype=float);oa=np.array(org_2025,dtype=float)
+            cors=[]
+            if np.std(ta)>0 and np.std(aa)>0:
+                r,p=stats.pearsonr(ta,aa);cors.append((abs(r),r,'same'))
+            if np.std(ta)>0 and np.std(oa)>0:
+                r,p=stats.pearsonr(ta,oa);cors.append((abs(r),r,'org-same'))
+            if np.std(ta[:-1])>0 and np.std(aa[1:])>0:
+                r,p=stats.pearsonr(ta[:-1],aa[1:]);cors.append((abs(r),r,'lag+1'))
+            if np.std(ta[:-1])>0 and np.std(oa[1:])>0:
+                r,p=stats.pearsonr(ta[:-1],oa[1:]);cors.append((abs(r),r,'org-lag'))
+            if cors:
+                best=max(cors,key=lambda x:x[0]);r_best=best[1];r_type=best[2]
+            if abs(r_best)>=0.8:conf='HIGH';corr_rate=0.17
+            elif abs(r_best)>=0.5:conf='MED';corr_rate=0.12
+            elif abs(r_best)>=0.3:conf='LOW';corr_rate=0.06
+            else:conf='WEAK';corr_rate=0.02
+            if jan_tts>0 and jan_amz>0:
+                uc=jan_amz*corr_rate;cp=jan_tts*cap_mult
+                corr_attr=min(uc,cp);corr_capped=uc>cp
+        elif active<3:conf='INSUF';corr_rate=0.03
+        else:conf='WEAK';corr_rate=0.02
 
-            t_pre_pv = sum(pre_pv); t_post_pv = sum(post_pv)
-            pv_change_pct = (t_post_pv - t_pre_pv) / t_pre_pv if t_pre_pv > 0 else 0
+        # ── FUNNEL MODEL (dual-path) ──
+        funnel_attr = 0
+        path_a = 0  # non-buying visitors → Amazon
+        path_b = 0  # impression-only → Amazon
+        path_a_amz_vis = 0
+        path_b_amz_vis = 0
 
-            t_pre_ads = sum(pre_ad_spend); t_post_ads = sum(post_ad_spend)
-            ad_spend_pct = (t_post_ads - t_pre_ads) / t_pre_ads if t_pre_ads > 0 else 0
+        if vis > 0:
+            tts_buyer_count = jan_tts / amz_aov if amz_aov > 0 else 0
+            tts_buy_rate = min(tts_buyer_count / vis, 0.5) if vis > 0 else 0
+            non_buyers = vis * (1 - tts_buy_rate)
+            path_a_amz_vis = non_buyers * browse_rate
+            path_a = path_a_amz_vis * amz_conv * amz_aov
 
-            # Ad halo
-            ad_halo = max(0, ad_spend_pct * t_pre_org * HALO_RATE) if ad_spend_pct > 0 else 0
-            unexplained = max(0, total_org_change - ad_halo)
+        if imp > vis:
+            view_only = imp - vis
+            path_b_amz_vis = view_only * recall_rate
+            path_b = path_b_amz_vis * amz_conv * amz_aov
 
-            # TTS share
-            tts_intensity = total_tts / t_post_org if t_post_org > 0 else 0
-            if pv_change_pct > ad_spend_pct and total_org_change > 0:
-                tts_share = min(0.5, tts_intensity * 100)
-                pv_signal = "POSITIVE"
-            elif total_org_change > 0:
-                tts_share = min(0.25, tts_intensity * 50)
-                pv_signal = "NEUTRAL"
-            else:
-                tts_share = 0
-                pv_signal = "NEGATIVE"
-
-            raw_attributed = unexplained * tts_share
-            gmv_cap = total_tts * GMV_CAP_MULT
-            capped = raw_attributed > gmv_cap
-            attributed_lift = min(raw_attributed, gmv_cap)
-
-            # Incremental PVs
-            if t_pre_pv > 0:
-                expected_pv = max(0, ad_spend_pct) * t_pre_pv
-                inc_pv_raw = max(0, (t_post_pv - t_pre_pv) - expected_pv)
-                inc_pv = inc_pv_raw * tts_share
-                if capped and raw_attributed > 0:
-                    inc_pv = inc_pv * (attributed_lift / raw_attributed)
-            else:
-                inc_pv = max(0, t_post_pv) * tts_share
-
-            # Incremental units
-            t_post_units = sum(post_units)
-            if t_post_org > 0 and t_post_units > 0:
-                org_per_unit = t_post_org / t_post_units
-                inc_units = attributed_lift / org_per_unit if org_per_unit > 0 else 0
-
-            # Confidence
-            org_grew = total_org_change > 0
-            pv_grew = t_post_pv > t_pre_pv
-            ad_stable = abs(ad_spend_pct) < 0.20
-            if has_tts and org_grew and pv_grew and ad_stable: confidence = "HIGH"
-            elif has_tts and org_grew and (pv_grew or ad_stable): confidence = "MED"
-            elif has_tts and org_grew: confidence = "LOW"
-            elif has_tts: confidence = "WEAK"
-
-        elif has_2025 and has_tts and not has_baseline:
-            # No 2024 baseline — new brand, use simple TTS ratio
-            t_post_org = sum(post_organic)
-            tts_intensity = total_tts / t_post_org if t_post_org > 0 else 0
-            tts_share = min(0.5, tts_intensity * 100)
-            raw_attributed = t_post_org * tts_share
-            gmv_cap = total_tts * GMV_CAP_MULT
-            capped = raw_attributed > gmv_cap
-            attributed_lift = min(raw_attributed, gmv_cap)
-            confidence = "LOW"
-            pv_signal = "N/A"
-
-        lift_per_dollar = attributed_lift / total_tts if total_tts > 0 else 0
-
-        # Monthly detail for charts
-        monthly = []
-        for m in range(12):
-            pre_o = pre_organic[m]; post_o = post_organic[m]
-            monthly.append({
-                'month': m+1, 'tts': tts_2025[m],
-                'pre_org': pre_o, 'post_org': post_o,
-                'org_yoy': post_o - pre_o,
-                'org_yoy_pct': (post_o - pre_o) / pre_o if pre_o > 0 else 0,
-                'pre_pv': pre_pv[m], 'post_pv': post_pv[m],
-                'pv_yoy_pct': (post_pv[m] - pre_pv[m]) / pre_pv[m] if pre_pv[m] > 0 else 0,
-                'pre_ads': pre_ad_spend[m], 'post_ads': post_ad_spend[m],
-                'ad_yoy_pct': (post_ad_spend[m] - pre_ad_spend[m]) / pre_ad_spend[m] if pre_ad_spend[m] > 0 else 0,
-            })
+        funnel_attr = path_a + path_b
+        total_amz_vis = path_a_amz_vis + path_b_amz_vis
 
         brands.append({
             'brand':brand, 'ps':meta.get('ps',''), 'status':meta.get('status',''),
-            'jan_tts':jan_tts, 'jan_amz':jan_amz, 'tts_total':total_tts,
-            'launch_year':launch_year, 'launch_month':launch_month,
-            'confidence':confidence, 'pv_signal':pv_signal,
-            # Attribution
-            'attributed_lift':attributed_lift, 'raw_attributed':raw_attributed,
-            'unexplained':unexplained, 'ad_halo':ad_halo,
-            'tts_share':tts_share, 'gmv_cap':gmv_cap, 'capped':capped,
-            'lift_per_dollar':lift_per_dollar,
-            'inc_pv':inc_pv, 'inc_units':inc_units,
-            # YoY metrics
-            'total_org_pct':total_org_pct, 'pv_change_pct':pv_change_pct,
-            'ad_spend_pct':ad_spend_pct,
+            'jan_tts':jan_tts, 'jan_amz':jan_amz, 'tts_total':sum(tts_2025),
+            'active_months':active,
+            # Correlation model
+            'r_best':r_best, 'r_type':r_type, 'corr_rate':corr_rate,
+            'confidence':conf, 'corr_attr':corr_attr, 'corr_capped':corr_capped,
+            # Funnel model
+            'funnel_attr':funnel_attr, 'path_a':path_a, 'path_b':path_b,
+            'path_a_vis':path_a_amz_vis, 'path_b_vis':path_b_amz_vis,
+            'total_amz_vis':total_amz_vis,
             # Content
             'impressions':imp, 'visitors':vis, 'videos':vid,
-            'live_streams':liv, 'affiliate_gmv':aff,
-            # Series
-            'tts_2025':tts_2025, 'monthly':monthly,
-            'pre_organic':pre_organic, 'post_organic':post_organic,
-            'pre_pv':pre_pv, 'post_pv':post_pv,
+            'live_streams':liv, 'creators':cre, 'affiliate_gmv':aff,
+            # Monthly series
+            'tts_2025':tts_2025, 'amz_2025':amz_2025, 'org_2025':org_2025,
         })
 
     return brands, latest
@@ -461,6 +396,7 @@ def build_model(gmv_data, broadway, amazon_data, bm, report_month=None):
 st.markdown(f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div style="width:7px;height:7px;border-radius:50%;background:{CORAL};box-shadow:0 0 12px rgba(255,107,53,.25);"></div><span style="font:700 10px \'Inter\',sans-serif;color:{CORAL};text-transform:uppercase;letter-spacing:.16em;">Pattern x NextWave</span></div>',unsafe_allow_html=True)
 st.markdown("# TTS to Amazon Lift Model")
 
+# ═══════════════ UPLOADS ═══════════════
 sec("Upload Monthly Data")
 c1,c2,c3 = st.columns(3)
 with c1:
@@ -475,9 +411,16 @@ with c3:
 
 if not amz_file:
     st.markdown("---")
-    st.warning("The **Amazon Report** is required. Upload it to continue.")
+    st.warning("The **Amazon Report** is required - it defines which brands are included (brands you sell on both TTS and Amazon). Upload it to continue.")
+    st.markdown("""
+**Three data sources:**
+1. **Monthly GMV** (.csv) - TTS GMV by brand, monthly history. Needed for correlation.
+2. **Broadway Tool** (.xlsm) - Content metrics: impressions, visitors, videos, creators. Needed for funnel model.
+3. **Amazon Report** (.xlsx) - *Required.* Amazon sales by brand. Defines the brand master list.
+    """)
     st.stop()
 
+# Parse
 bm = dict(BRAND_MAP)
 gmv_data = parse_gmv_csv(gmv_file.read()) if gmv_file else None
 if gmv_file: gmv_file.seek(0)
@@ -487,10 +430,11 @@ amazon_data = parse_amazon(amz_file.read())
 amz_file.seek(0)
 
 if not amazon_data:
-    st.error("Could not parse Amazon report.")
+    st.error("Could not parse Amazon report. Check the file has a 'Brands > Aggregations' sheet with Start Date and Brand columns.")
     st.stop()
 
-# Month selector
+# ═══════════════ MONTH SELECTOR ═══════════════
+# Detect available months from Broadway data
 avail_months = set()
 if broadway:
     for p in broadway['pr']:
@@ -511,397 +455,417 @@ sec("Select Reporting Month")
 sel_month_label = st.selectbox("Analyze lift for:", month_options, index=0)
 sel_month_idx = month_options.index(sel_month_label)
 selected_month = month_tuples[sel_month_idx]
+st.caption(f"All content, funnel, and attribution data below is for **{sel_month_label}** only.")
 
-# Sidebar
+# ═══════════════ SIDEBAR SETTINGS ═══════════════
 with st.sidebar:
-    st.markdown(f'<span style="font:700 10px \'Inter\',sans-serif;color:{CORAL};text-transform:uppercase;letter-spacing:.16em;">Model v6 — YoY Pre/Post</span>',unsafe_allow_html=True)
+    st.markdown(f'<span style="font:700 10px \'Inter\',sans-serif;color:{CORAL};text-transform:uppercase;letter-spacing:.16em;">Model Settings</span>',unsafe_allow_html=True)
     st.markdown("---")
-    st.markdown("**Model Parameters**")
-    st.caption(f"GMV Cap: {GMV_CAP_MULT}x TTS GMV")
-    st.caption(f"Ad Halo Rate: {HALO_RATE:.0%}")
-    st.caption("Baseline: 2024 Amazon (embedded)")
+    st.markdown(f"**Correlation Model**")
+    cap_mult = st.slider("GMV Cap Multiplier", 2, 8, 4, help="Attributed <= TTS x this")
     st.markdown("---")
-    st.caption(f"GMV CSV: {'✓' if gmv_data else '—'}")
-    st.caption(f"Broadway: {'✓' if broadway else '—'}")
+    st.markdown(f"**Funnel Model**")
+    browse_rate = st.slider("Non-buyer Amazon browse %", 5, 40, 15, help="% of TTS visitors who didn't buy but later go to Amazon") / 100
+    recall_rate = st.slider("Impression recall rate (per 1000)", 1, 10, 2, help="Per 1000 impression-only viewers who later search Amazon") / 1000
+    amz_conv = st.slider("Amazon conversion %", 5, 20, 10) / 100
+    amz_aov = st.slider("Amazon AOV ($)", 15, 75, 35)
+    st.markdown("---")
+    st.caption(f"GMV CSV: {'loaded' if gmv_data else 'none'}")
+    st.caption(f"Broadway: {'loaded' if broadway else 'none'}")
     st.caption(f"Amazon: {len(amazon_data)} rows")
 
 # Build model
-brands, latest = build_model(gmv_data, broadway, amazon_data, bm, report_month=selected_month)
+brands, latest = build_model(gmv_data, broadway, amazon_data, bm,
+    cap_mult=cap_mult, browse_rate=browse_rate, recall_rate=recall_rate,
+    amz_conv=amz_conv, amz_aov=amz_aov, report_month=selected_month)
 
 if not brands:
-    st.error("No matching brands found.")
+    st.error("No matching brands found. Check that brand names align across files.")
     st.stop()
 
-df = pd.DataFrame(brands).sort_values('attributed_lift', ascending=False)
+df = pd.DataFrame(brands).sort_values('jan_tts', ascending=False)
 ml = f"{MO[latest[1]-1]} {latest[0]}"
 
-st.markdown(f'<div style="margin:10px 0;font:700 11px \'Inter\',sans-serif;color:{T2};">{len(df)} brands matched | Report: {ml} | Model v6 — YoY Pre/Post</div>',unsafe_allow_html=True)
+st.markdown(f'<div style="margin:10px 0;font:700 11px \'Inter\',sans-serif;color:{T2};">{len(df)} Amazon brands matched | Data: {ml}</div>',unsafe_allow_html=True)
 
 # ═══════════════ KPIs ═══════════════
 ttts=df['jan_tts'].sum(); tamz=df['jan_amz'].sum()
-t_lift=df['attributed_lift'].sum()
-t_pv=df['inc_pv'].sum(); t_units=df['inc_units'].sum()
-capped_ct = df['capped'].sum()
+t_corr=df['corr_attr'].sum(); t_funnel=df['funnel_attr'].sum()
+timp=df['impressions'].sum()
 
 cols = st.columns(6)
-with cols[0]: st.markdown(kpi_h("TTS GMV",fd(ttts),ml,tip="TikTok Shop GMV for the selected month across all brands."),unsafe_allow_html=True)
-with cols[1]: st.markdown(kpi_h("AMZ Sales",fd(tamz),"latest month",tip="Total Amazon sales for the selected month."),unsafe_allow_html=True)
-with cols[2]: st.markdown(kpi_h("Attributed Lift",fd(t_lift),f"{t_lift/tamz*100:.2f}% of AMZ" if tamz>0 else "",g=True,tip="Amazon organic sales attributed to TTS activity. Uses YoY pre/post comparison with 2024 baseline, ad halo discount, and 5x GMV cap."),unsafe_allow_html=True)
-with cols[3]: st.markdown(kpi_h("Incr. Page Views",fn(t_pv),"attributed to TTS",g=True,tip="Incremental Amazon page views above 2024 baseline, attributed to TTS at the same share rate."),unsafe_allow_html=True)
-with cols[4]: st.markdown(kpi_h("Incr. Units",fn(t_units),"estimated",g=True,tip="Estimated incremental units sold based on attributed lift and current revenue per unit."),unsafe_allow_html=True)
-with cols[5]: st.markdown(kpi_h("Lift / $1 TTS",f"${t_lift/ttts:.2f}" if ttts>0 else "$0","portfolio avg",tip="Dollars of Amazon organic lift per dollar of TTS GMV. Capped at 5x per brand."),unsafe_allow_html=True)
+with cols[0]: st.markdown(kpi_h("TTS GMV",fd(ttts),ml,tip="Total Gross Merchandise Value sold through TikTok Shop for the selected month across all Amazon-matched brands."),unsafe_allow_html=True)
+with cols[1]: st.markdown(kpi_h("AMZ Sales",fd(tamz),"latest month",tip="Total Amazon sales revenue for the selected month across all matched brands. Sourced from the Amazon Broadway report."),unsafe_allow_html=True)
+with cols[2]: st.markdown(kpi_h("Corr. Attributed",fd(t_corr),f"{t_corr/tamz*100:.2f}% of AMZ" if tamz>0 else "",g=True,tip="Amazon sales attributed to TikTok Shop activity using Pearson correlation between monthly TTS and AMZ trends. Higher correlation = higher attribution rate (17% for r≥0.8, down to 2% for weak). Capped at 4x TTS GMV."),unsafe_allow_html=True)
+with cols[3]: st.markdown(kpi_h("Funnel Attributed",fd(t_funnel),f"{t_funnel/tamz*100:.2f}% of AMZ" if tamz>0 else "",g=True,tip="Amazon sales estimated via dual-path funnel: Path A = TTS visitors who didn't buy but later searched Amazon. Path B = viewers who saw TTS content and recalled the brand on Amazon. Uses configurable browse rate, recall rate, AMZ conversion, and AOV."),unsafe_allow_html=True)
+with cols[4]: st.markdown(kpi_h("Impressions",fn(timp),"Broadway",tip="Total content impressions from the Broadway Tool for the selected month. Counts every time TTS content was shown to a viewer across all matched brands."),unsafe_allow_html=True)
+with cols[5]:
+    lift = t_corr/ttts if ttts>0 else 0
+    st.markdown(kpi_h("Lift / TTS $1",f"${lift:.2f}","correlation model",tip="For every $1 of TTS GMV generated, this is how many dollars of Amazon sales are attributed via the correlation model. Higher = stronger halo effect from TikTok to Amazon."),unsafe_allow_html=True)
 
 
 # ═══════════════ TABS ═══════════════
-tabs = st.tabs(["📊 Portfolio","🔍 Brand Deep Dive","📄 Export"])
+tabs = st.tabs(["Attribution","Funnel Model","Correlation","Content Funnel","Deep Dive"])
 
-# ── TAB 1: PORTFOLIO ──
+# TAB 1: ATTRIBUTION OVERVIEW
 with tabs[0]:
-    sec("Attribution Summary")
-    tbl = df[['brand','confidence','pv_signal','jan_tts','tts_total','jan_amz',
-              'total_org_pct','ad_spend_pct','attributed_lift','inc_pv','inc_units','lift_per_dollar','capped']].copy()
-    tbl.columns = ['Brand','Conf','PV Signal','TTS GMV (mo)','TTS Total','AMZ Sales',
-                   'Org YoY%','Ad Spend Δ%','Attributed Lift','Incr PVs','Incr Units','$/TTS','Capped']
-    tbl['TTS GMV (mo)'] = tbl['TTS GMV (mo)'].apply(fd)
-    tbl['TTS Total'] = tbl['TTS Total'].apply(fd)
-    tbl['AMZ Sales'] = tbl['AMZ Sales'].apply(fd)
-    tbl['Org YoY%'] = tbl['Org YoY%'].apply(lambda x: f"{x:+.0%}")
-    tbl['Ad Spend Δ%'] = tbl['Ad Spend Δ%'].apply(lambda x: f"{x:+.0%}")
-    tbl['Attributed Lift'] = tbl['Attributed Lift'].apply(fd)
-    tbl['Incr PVs'] = tbl['Incr PVs'].apply(fn)
-    tbl['Incr Units'] = tbl['Incr Units'].apply(lambda x: fn(x))
-    tbl['$/TTS'] = tbl['$/TTS'].apply(lambda x: f"${x:.2f}")
-    tbl['Capped'] = tbl['Capped'].apply(lambda x: "⚠ 5x" if x else "—")
-    st.dataframe(tbl, use_container_width=True, hide_index=True)
+    sec("Attribution Overview")
+    st.caption("Two models side-by-side: correlation-based and funnel-based")
+    ad = df.copy()
+    ad['corr_rate_pct'] = (ad['corr_rate']*100).round(0).astype(int).astype(str)+'%'
+    ad['cap_f'] = ad['corr_capped'].apply(lambda x:'YES' if x else '-')
+    disp = ad[['brand','confidence','r_best','corr_rate_pct','corr_attr','funnel_attr','path_a','path_b','jan_tts','jan_amz','cap_f']].copy()
+    disp.columns = ['Brand','Conf','r','Rate','Corr Attr','Funnel Attr','Funnel A (visitors)','Funnel B (impressions)','TTS GMV','AMZ Sales','Capped']
+    st.dataframe(disp.sort_values('Corr Attr',ascending=False).style.format(
+        {'r':'{:.3f}','Corr Attr':'${:,.0f}','Funnel Attr':'${:,.0f}',
+         'Funnel A (visitors)':'${:,.0f}','Funnel B (impressions)':'${:,.0f}',
+         'TTS GMV':'${:,.0f}','AMZ Sales':'${:,.0f}'}),
+        use_container_width=True, height=550)
 
-    sec("Attributed Lift by Brand")
-    pos = df[df['attributed_lift']>0].sort_values('attributed_lift')
-    if len(pos) > 0:
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            y=pos['brand'], x=pos['attributed_lift'],
-            orientation='h', marker_color=CORAL,
-            text=pos['attributed_lift'].apply(fd),
-            textposition='outside', textfont=dict(size=10,color=T1),
-            hovertemplate='%{y}: %{x:$,.0f}<extra></extra>'
-        ))
-        pthem(fig, h=max(250, len(pos)*35))
-        fig.update_layout(xaxis_title="Attributed Amazon Organic Lift ($)")
-        st.plotly_chart(fig, use_container_width=True)
+    sec("Attribution Comparison")
+    cmp = df[['brand','corr_attr','funnel_attr']].copy()
+    cmp = cmp[(cmp['corr_attr']>0)|(cmp['funnel_attr']>0)].sort_values('corr_attr',ascending=True)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(y=cmp['brand'],x=cmp['corr_attr'],name='Correlation',orientation='h',marker=dict(color=GRN,opacity=.7)))
+    fig.add_trace(go.Bar(y=cmp['brand'],x=cmp['funnel_attr'],name='Funnel',orientation='h',marker=dict(color=PUR,opacity=.7)))
+    fig.update_layout(barmode='group')
+    fig.update_xaxes(tickprefix='$',tickformat=',.0s')
+    st.plotly_chart(pthem(fig,max(350,len(cmp)*30)),use_container_width=True)
 
-    sec("Lift per $1 TTS by Brand")
-    lpd = df[df['lift_per_dollar']>0].sort_values('lift_per_dollar')
-    if len(lpd) > 0:
-        fig2 = go.Figure()
-        colors = [GRN if not r['capped'] else YEL for _,r in lpd.iterrows()]
-        fig2.add_trace(go.Bar(
-            y=lpd['brand'], x=lpd['lift_per_dollar'],
-            orientation='h', marker_color=colors,
-            text=lpd['lift_per_dollar'].apply(lambda x: f"${x:.2f}"),
-            textposition='outside', textfont=dict(size=10,color=T1),
-        ))
-        pthem(fig2, h=max(250, len(lpd)*35))
-        fig2.update_layout(xaxis_title="$ Lift per $1 TTS GMV")
-        st.plotly_chart(fig2, use_container_width=True)
-        st.caption("🟢 Uncapped  🟡 Capped at 5x GMV")
-
-    sec("YoY Organic Growth vs TTS Activity")
-    has_data = df[(df['total_org_pct'] != 0) & (df['tts_total'] > 0)]
-    if len(has_data) > 0:
-        fig3 = go.Figure()
-        fig3.add_trace(go.Scatter(
-            x=has_data['tts_total'], y=has_data['total_org_pct']*100,
-            mode='markers+text', text=has_data['brand'],
-            textposition='top center', textfont=dict(size=9, color=T2),
-            marker=dict(size=12, color=CORAL, opacity=0.8),
-            hovertemplate='%{text}<br>TTS: %{x:$,.0f}<br>Org YoY: %{y:.1f}%<extra></extra>'
-        ))
-        fig3.add_hline(y=0, line_dash="dash", line_color=T3)
-        pthem(fig3, h=400)
-        fig3.update_layout(xaxis_title="Total TTS GMV (2025)", yaxis_title="Organic Sales YoY Change %",
-                          xaxis_type="log")
-        st.plotly_chart(fig3, use_container_width=True)
-
-# ── TAB 2: BRAND DEEP DIVE ──
+# TAB 2: FUNNEL MODEL
 with tabs[1]:
-    brand_list = sorted(df['brand'].unique())
-    sel_brand = st.selectbox("Select Brand", brand_list, key="brand_picker")
-    br = df[df['brand']==sel_brand].iloc[0]
+    sec("Dual-Path Funnel Model")
+    st.markdown(f"""
+**Path A — Non-Buying Visitors:**
+TTS Visitors who didn't buy x **{browse_rate:.0%}** go to Amazon x **{amz_conv:.0%}** convert x **${amz_aov}** AOV
 
-    # KPI row
-    c1,c2,c3,c4,c5 = st.columns(5)
-    with c1: st.markdown(kpi_h("TTS GMV (mo)",fd(br['jan_tts']),ml),unsafe_allow_html=True)
-    with c2: st.markdown(kpi_h("AMZ Sales",fd(br['jan_amz']),"latest"),unsafe_allow_html=True)
-    with c3: st.markdown(kpi_h("Attributed Lift",fd(br['attributed_lift']),
-        f"{'⚠ Capped 5x' if br['capped'] else '✓ Uncapped'}",g=True),unsafe_allow_html=True)
-    with c4: st.markdown(kpi_h("Lift / $1",f"${br['lift_per_dollar']:.2f}",br['confidence']),unsafe_allow_html=True)
-    with c5: st.markdown(kpi_h("Confidence",br['confidence'],br['pv_signal']),unsafe_allow_html=True)
+**Path B — Impression Recall:**
+Impression-only viewers (saw content, didn't click) x **{recall_rate:.2%}** later search Amazon x **{amz_conv:.0%}** convert x **${amz_aov}** AOV
 
-    # Attribution waterfall
-    sec("Attribution Waterfall")
-    wf_labels = ['Organic Δ YoY', 'Ad Halo', 'Unexplained', f'TTS Share ({br["tts_share"]:.0%})', 'GMV Cap' if br['capped'] else 'Final']
-    wf_vals = [br.get('total_org_pct',0) * sum(br['pre_organic']) if sum(br['pre_organic'])>0 else sum(br['post_organic']),
-               -br['ad_halo'], br['unexplained'], -br['unexplained']*(1-br['tts_share']) if br['tts_share']<1 else 0, 0]
+Adjust rates in the sidebar. Conservative defaults calibrated to match correlation model output.
+    """)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(f"""
-        <div style="background:{S1};border:1px solid {BD};border-radius:12px;padding:20px;">
-        <div style="font:700 12px 'Inter',sans-serif;color:{T1};margin-bottom:12px;">Model Breakdown</div>
-        <div style="font:400 11px 'Inter',sans-serif;color:{T2};line-height:2.2;">
-        Organic YoY Δ: <span style="color:{T1}">{fd(sum(br['post_organic'])-sum(br['pre_organic']))}</span> ({br['total_org_pct']:+.1%})<br>
-        Page Views YoY: <span style="color:{T1}">{br['pv_change_pct']:+.1%}</span> [{br['pv_signal']}]<br>
-        Ad Spend YoY: <span style="color:{T1}">{br['ad_spend_pct']:+.1%}</span><br>
-        <hr style="border-color:{BD};margin:6px 0;">
-        Ad Halo Discount: <span style="color:{T1}">-{fd(br['ad_halo'])}</span><br>
-        Unexplained Organic: <span style="color:{T1}">{fd(br['unexplained'])}</span><br>
-        TTS Share: <span style="color:{T1}">{br['tts_share']:.1%}</span><br>
-        Raw Attributed: <span style="color:{T1}">{fd(br['raw_attributed'])}</span><br>
-        {'<span style="color:'+YEL+'">⚠ Capped at 5x: '+fd(br["gmv_cap"])+'</span><br>' if br['capped'] else ''}
-        <hr style="border-color:{BD};margin:6px 0;">
-        <span style="color:{GRN};font-weight:700;">Final Lift: {fd(br['attributed_lift'])}</span><br>
-        Incr. Page Views: <span style="color:{T1}">{fn(br['inc_pv'])}</span><br>
-        Incr. Units: <span style="color:{T1}">{fn(br['inc_units'])}</span><br>
-        Lift per $1 TTS: <span style="color:{T1}">${br['lift_per_dollar']:.2f}</span>
-        </div></div>
-        """, unsafe_allow_html=True)
+    fu = df[['brand','impressions','visitors','jan_tts','path_a_vis','path_a','path_b_vis','path_b','total_amz_vis','funnel_attr']].copy()
+    fu.columns = ['Brand','Impressions','TTS Visitors','TTS GMV','Path A AMZ Vis','Path A Sales','Path B AMZ Vis','Path B Sales','Total AMZ Vis','Funnel Attributed']
+    st.dataframe(fu.sort_values('Funnel Attributed',ascending=False).style.format(
+        {'Impressions':'{:,.0f}','TTS Visitors':'{:,.0f}','TTS GMV':'${:,.0f}',
+         'Path A AMZ Vis':'{:,.0f}','Path A Sales':'${:,.0f}',
+         'Path B AMZ Vis':'{:,.0f}','Path B Sales':'${:,.0f}',
+         'Total AMZ Vis':'{:,.0f}','Funnel Attributed':'${:,.0f}'}),
+        use_container_width=True, height=550)
 
-    with col2:
-        st.markdown(f"""
-        <div style="background:{S1};border:1px solid {BD};border-radius:12px;padding:20px;">
-        <div style="font:700 12px 'Inter',sans-serif;color:{T1};margin-bottom:12px;">Content Metrics ({ml})</div>
-        <div style="font:400 11px 'Inter',sans-serif;color:{T2};line-height:2.2;">
-        TTS GMV: <span style="color:{T1}">{fd(br['jan_tts'])}</span><br>
-        TTS Impressions: <span style="color:{T1}">{fn(br['impressions'])}</span><br>
-        TTS Visitors: <span style="color:{T1}">{fn(br['visitors'])}</span><br>
-        Videos: <span style="color:{T1}">{fn(br['videos'])}</span><br>
-        Live Streams: <span style="color:{T1}">{fn(br['live_streams'])}</span><br>
-        Affiliate GMV: <span style="color:{T1}">{fd(br['affiliate_gmv'])}</span><br>
-        <hr style="border-color:{BD};margin:6px 0;">
-        TTS Total (2025): <span style="color:{T1}">{fd(br['tts_total'])}</span><br>
-        Launch: <span style="color:{T1}">{MO[br['launch_month']-1] if br['launch_month']>0 else 'N/A'} {br['launch_year']}</span>
-        </div></div>
-        """, unsafe_allow_html=True)
+    sec("Funnel Waterfall - Portfolio")
+    total_vis = df['visitors'].sum()
+    total_non_buy = total_vis - (ttts / amz_aov if amz_aov > 0 else 0)
+    total_view_only = timp - total_vis
+    total_a_vis = df['path_a_vis'].sum()
+    total_b_vis = df['path_b_vis'].sum()
+    total_amz_orders = t_funnel / amz_aov if amz_aov > 0 else 0
 
-    # YoY chart
-    sec("YoY Organic Sales Comparison (2024 vs 2025)")
-    monthly = br['monthly']
-    fig_yoy = make_subplots(specs=[[{"secondary_y": True}]])
-    fig_yoy.add_trace(go.Bar(name='2024 Organic', x=MO, y=[m['pre_org'] for m in monthly],
-        marker_color=T3, opacity=0.5), secondary_y=False)
-    fig_yoy.add_trace(go.Bar(name='2025 Organic', x=MO, y=[m['post_org'] for m in monthly],
-        marker_color=GRN, opacity=0.8), secondary_y=False)
-    fig_yoy.add_trace(go.Scatter(name='TTS GMV', x=MO, y=[m['tts'] for m in monthly],
-        mode='lines+markers', line=dict(color=CORAL, width=2), marker=dict(size=6)),
-        secondary_y=True)
-    pthem(fig_yoy, h=380)
-    fig_yoy.update_layout(barmode='group')
-    fig_yoy.update_yaxes(title_text="Organic Sales", secondary_y=False)
-    fig_yoy.update_yaxes(title_text="TTS GMV", secondary_y=True)
-    st.plotly_chart(fig_yoy, use_container_width=True)
+    funnel_labels = ['TTS Impressions','TTS Visitors','Non-Buyers','Path A: AMZ Visits','Path B: AMZ Visits','Est. AMZ Orders','Est. AMZ Sales']
+    funnel_vals = [timp, total_vis, max(total_non_buy,0), total_a_vis, total_b_vis, total_amz_orders, t_funnel]
+    funnel_colors = [PUR,BLU,YEL,GRN,GRN,CORAL,CORAL]
+    fig = go.Figure(go.Bar(
+        y=funnel_labels[::-1], x=funnel_vals[::-1], orientation='h',
+        marker=dict(color=funnel_colors[::-1], opacity=.8),
+        text=[fn(v) if i < 5 else fd(v) for i, v in enumerate(funnel_vals[::-1])],
+        textposition='outside', textfont=dict(size=10, family='Inter', color=T1),
+    ))
+    st.plotly_chart(pthem(fig,400),use_container_width=True)
 
-    # Page views YoY
-    sec("YoY Page Views (2024 vs 2025)")
-    fig_pv = go.Figure()
-    fig_pv.add_trace(go.Bar(name='2024 PVs', x=MO, y=[m['pre_pv'] for m in monthly],
-        marker_color=T3, opacity=0.5))
-    fig_pv.add_trace(go.Bar(name='2025 PVs', x=MO, y=[m['post_pv'] for m in monthly],
-        marker_color=BLU, opacity=0.8))
-    pthem(fig_pv, h=300)
-    fig_pv.update_layout(barmode='group')
-    st.plotly_chart(fig_pv, use_container_width=True)
-
-    # Monthly detail table
-    sec("Monthly Detail")
-    mt = pd.DataFrame(monthly)
-    mt['Mo'] = [MO[i] for i in range(12)]
-    mt_disp = mt[['Mo','tts','pre_org','post_org','org_yoy','org_yoy_pct','pre_pv','post_pv','pv_yoy_pct','ad_yoy_pct']].copy()
-    mt_disp.columns = ['Month','TTS GMV','2024 Organic','2025 Organic','Org Δ','Org Δ%','2024 PVs','2025 PVs','PV Δ%','Ad Spend Δ%']
-    for c in ['TTS GMV','2024 Organic','2025 Organic','Org Δ']:
-        mt_disp[c] = mt_disp[c].apply(fd)
-    for c in ['2024 PVs','2025 PVs']:
-        mt_disp[c] = mt_disp[c].apply(fn)
-    for c in ['Org Δ%','PV Δ%','Ad Spend Δ%']:
-        mt_disp[c] = mt_disp[c].apply(lambda x: f"{x:+.0%}" if abs(x) < 100 else f"{x:+.0f}x")
-    st.dataframe(mt_disp, use_container_width=True, hide_index=True)
-
-
-# ── TAB 3: EXPORT ──
+# TAB 3: CORRELATION
 with tabs[2]:
-    sec("PDF Brand Report")
-    pdf_brand_list = sorted(df['brand'].unique())
-    pdf_brand = st.selectbox("Generate PDF for:", pdf_brand_list, key="pdf_brand_picker")
+    sec("Correlation Model - TTS vs Amazon Monthly (2025)")
+    if not gmv_data:
+        st.warning("Upload the **Monthly GMV CSV** to enable correlation analysis. It provides 2025 TTS history needed to correlate with Amazon sales.")
+    else:
+        st.caption("Red bars = TTS GMV | Blue area = AMZ total | Green dashed = AMZ organic")
+        cb = df[df['active_months']>=3].sort_values('r_best',ascending=False,key=abs)
+        if len(cb) == 0:
+            st.info("No brands with 3+ active TTS months found. Correlation requires at least 3 months of TTS data.")
+        for _,b in cb.iterrows():
+            conf_color = CC.get(b['confidence'],T3)
+            cl1,cl2 = st.columns([4,1])
+            with cl1: st.markdown(f"**{b['brand']}** {badge_h(b['confidence'])} r = {b['r_best']:.3f} ({b['r_type']})",unsafe_allow_html=True)
+            with cl2: st.markdown(f"<span style='font:700 12px Inter;color:{conf_color};'>{fd(b['corr_attr'])} attributed</span>",unsafe_allow_html=True)
+            fig = make_subplots(specs=[[{"secondary_y":True}]])
+            fig.add_trace(go.Scatter(x=MO,y=b['amz_2025'],name='AMZ',fill='tozeroy',fillcolor='rgba(77,166,255,.06)',line=dict(color=BLU,width=2),marker=dict(size=3)),secondary_y=False)
+            fig.add_trace(go.Scatter(x=MO,y=b['org_2025'],name='Organic',line=dict(color=GRN,width=1.5,dash='dash')),secondary_y=False)
+            fig.add_trace(go.Bar(x=MO,y=b['tts_2025'],name='TTS',marker=dict(color=CORAL,opacity=.75),width=.4),secondary_y=True)
+            fig.update_yaxes(tickprefix='$',tickformat=',.0s',secondary_y=False)
+            fig.update_yaxes(tickprefix='$',tickformat=',.0s',secondary_y=True)
+            st.plotly_chart(pthem(fig,220),use_container_width=True)
+            st.markdown("---")
 
-    if st.button("Generate PDF Report", type="primary"):
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.utils import ImageReader
-        from reportlab.lib.colors import HexColor
+# TAB 4: CONTENT FUNNEL
+with tabs[3]:
+    sec(f"Content Funnel - {ml}")
+    if not broadway:
+        st.warning("Upload the **Broadway Tool** for content metrics.")
+    else:
+        fu2 = df[df['impressions']>0].copy()
+        fu2['visit_pct'] = np.where(fu2['impressions']>0,(fu2['visitors']/fu2['impressions']*100).round(2),0)
+        disp = fu2[['brand','impressions','visitors','visit_pct','videos','live_streams','creators','jan_tts']].copy()
+        disp.columns = ['Brand','Impressions','Visitors','Visit %','Videos','Lives','Creators','TTS GMV']
+        st.dataframe(disp.sort_values('Impressions',ascending=False).style.format(
+            {'Impressions':'{:,.0f}','Visitors':'{:,.0f}','Visit %':'{:.2f}%',
+             'Videos':'{:,.0f}','Lives':'{:,.0f}','TTS GMV':'${:,.0f}'}),
+            use_container_width=True, height=500)
 
-        pbr = df[df['brand']==pdf_brand].iloc[0]
-        monthly_d = pbr['monthly']
-        buf = BytesIO()
-        c = canvas.Canvas(buf, pagesize=letter)
-        W, H = letter
-        bg = HexColor('#0A0A0A'); wh = HexColor('#FFFFFF'); coral_c = HexColor('#FF6B35')
-        grn_c = HexColor('#34D399'); t2c = HexColor('#9CA3AF'); bdc = HexColor('#2A2A2A')
-
-        def draw_bg():
-            c.setFillColor(bg); c.rect(0, 0, W, H, fill=1)
-
-        def chart_to_img(fig_func, w=5.5, h=2.5):
-            fig, ax = fig_func(w, h)
-            fig.patch.set_facecolor('#0A0A0A')
-            ax.set_facecolor('#0A0A0A')
-            ax.tick_params(colors='#9CA3AF', labelsize=7)
-            for spine in ax.spines.values(): spine.set_color('#2A2A2A')
-            buf2 = BytesIO()
-            fig.savefig(buf2, format='png', dpi=150, bbox_inches='tight', facecolor='#0A0A0A')
-            plt.close(fig)
-            buf2.seek(0)
-            return ImageReader(buf2)
-
-        # ═══ PAGE 1 ═══
-        draw_bg()
-        # Header
-        c.setFillColor(coral_c); c.setFont("Helvetica-Bold", 8)
-        c.drawString(40, H-35, "PATTERN x NEXTWAVE")
-        c.setFillColor(wh); c.setFont("Helvetica-Bold", 20)
-        c.drawString(40, H-60, f"{pdf_brand} — TTS Lift Report")
-        c.setFillColor(t2c); c.setFont("Helvetica", 9)
-        c.drawString(40, H-78, f"Model v6 | YoY Pre/Post | {ml} | 2024 Baseline")
-
-        # KPI boxes
-        kpis = [
-            ("TTS GMV", fd(pbr['jan_tts'])),
-            ("AMZ Sales", fd(pbr['jan_amz'])),
-            ("Attributed Lift", fd(pbr['attributed_lift'])),
-            ("Incr. PVs", fn(pbr['inc_pv'])),
-            ("Incr. Units", fn(pbr['inc_units'])),
-            ("Lift/$1", f"${pbr['lift_per_dollar']:.2f}"),
-        ]
-        bw = 82; bx = 40
-        for lb, vl in kpis:
-            c.setFillColor(HexColor('#111111')); c.roundRect(bx, H-130, bw, 40, 5, fill=1)
-            c.setStrokeColor(bdc); c.roundRect(bx, H-130, bw, 40, 5, fill=0, stroke=1)
-            c.setFillColor(t2c); c.setFont("Helvetica-Bold", 6)
-            c.drawCentredString(bx+bw/2, H-100, lb.upper())
-            c.setFillColor(wh); c.setFont("Helvetica-Bold", 13)
-            c.drawCentredString(bx+bw/2, H-120, vl)
-            bx += bw + 6
-
-        # Confidence + PV Signal
-        c.setFillColor(t2c); c.setFont("Helvetica", 8)
-        c.drawString(40, H-148, f"Confidence: {pbr['confidence']}  |  PV Signal: {pbr['pv_signal']}  |  {'⚠ Capped at 5x' if pbr['capped'] else '✓ Uncapped'}")
-
-        # YoY Organic chart
-        def yoy_chart(w, h):
-            fig, ax = plt.subplots(figsize=(w, h))
-            x = np.arange(12)
-            ax.bar(x - 0.2, [m['pre_org'] for m in monthly_d], 0.35, color='#4B5563', alpha=0.6, label='2024')
-            ax.bar(x + 0.2, [m['post_org'] for m in monthly_d], 0.35, color='#34D399', alpha=0.8, label='2025')
-            ax2 = ax.twinx()
-            ax2.plot(x, [m['tts'] for m in monthly_d], 'o-', color='#FF6B35', linewidth=1.5, markersize=4, label='TTS GMV')
-            ax2.tick_params(colors='#9CA3AF', labelsize=7)
-            ax.set_xticks(x); ax.set_xticklabels(MO, fontsize=7)
-            ax.legend(loc='upper left', fontsize=6, facecolor='#0A0A0A', edgecolor='#2A2A2A', labelcolor='#9CA3AF')
-            ax2.legend(loc='upper right', fontsize=6, facecolor='#0A0A0A', edgecolor='#2A2A2A', labelcolor='#9CA3AF')
-            ax.set_title('YoY Organic Sales + TTS GMV', color='white', fontsize=9, fontweight='bold', pad=8)
-            return fig, ax
-
-        img = chart_to_img(yoy_chart, 7, 2.5)
-        c.drawImage(img, 30, H-400, width=540, height=230, mask='auto')
-
-        # Attribution waterfall text
-        y = H-420
-        c.setFillColor(coral_c); c.setFont("Helvetica-Bold", 8); c.drawString(40, y, "ATTRIBUTION WATERFALL")
-        items = [
-            (f"Organic Δ YoY:", fd(sum(pbr['post_organic'])-sum(pbr['pre_organic'])), f"({pbr['total_org_pct']:+.1%})"),
-            (f"Ad Halo Discount:", f"-{fd(pbr['ad_halo'])}", f"({HALO_RATE:.0%} of ad spend Δ)"),
-            (f"Unexplained Organic:", fd(pbr['unexplained']), ""),
-            (f"TTS Share:", f"{pbr['tts_share']:.1%}", f"(PV signal: {pbr['pv_signal']})"),
-            (f"Raw Attributed:", fd(pbr['raw_attributed']), f"{'⚠ Capped at '+fd(pbr['gmv_cap']) if pbr['capped'] else ''}"),
-            (f"FINAL ATTRIBUTED LIFT:", fd(pbr['attributed_lift']), ""),
-        ]
-        y -= 16
-        for lb, vl, note in items:
-            c.setFillColor(t2c); c.setFont("Helvetica", 8); c.drawString(55, y, lb)
-            is_final = "FINAL" in lb
-            c.setFillColor(grn_c if is_final else wh); c.setFont("Helvetica-Bold", 9 if is_final else 8)
-            c.drawString(230, y, vl)
-            if note:
-                c.setFillColor(t2c); c.setFont("Helvetica", 7); c.drawString(340, y, note)
-            y -= 14
-
-        # ═══ PAGE 2 ═══
-        c.showPage(); draw_bg()
-        c.setFillColor(coral_c); c.setFont("Helvetica-Bold", 8); c.drawString(40, H-35, "PATTERN x NEXTWAVE")
-        c.setFillColor(wh); c.setFont("Helvetica-Bold", 16); c.drawString(40, H-55, f"{pdf_brand} — Monthly Detail")
-
-        # Page views chart
-        def pv_chart(w, h):
-            fig, ax = plt.subplots(figsize=(w, h))
-            x = np.arange(12)
-            ax.bar(x - 0.2, [m['pre_pv'] for m in monthly_d], 0.35, color='#4B5563', alpha=0.6, label='2024 PVs')
-            ax.bar(x + 0.2, [m['post_pv'] for m in monthly_d], 0.35, color='#60A5FA', alpha=0.8, label='2025 PVs')
-            ax.set_xticks(x); ax.set_xticklabels(MO, fontsize=7)
-            ax.legend(fontsize=6, facecolor='#0A0A0A', edgecolor='#2A2A2A', labelcolor='#9CA3AF')
-            ax.set_title('YoY Page Views', color='white', fontsize=9, fontweight='bold', pad=8)
-            return fig, ax
-
-        img2 = chart_to_img(pv_chart, 7, 2.2)
-        c.drawImage(img2, 30, H-270, width=540, height=200, mask='auto')
-
-        # Monthly table
-        c.setFillColor(coral_c); c.setFont("Helvetica-Bold", 8); c.drawString(40, H-290, "MONTHLY COMPARISON")
-        cols_x = [40, 75, 135, 210, 285, 340, 395, 455, 510]
-        col_labels = ['Mo', 'TTS GMV', '2024 Org', '2025 Org', 'Org Δ%', '2024 PV', '2025 PV', 'PV Δ%', 'Ad Δ%']
-        y = H-306
-        c.setFillColor(t2c); c.setFont("Helvetica-Bold", 6)
-        for i, lb in enumerate(col_labels):
-            c.drawString(cols_x[i], y, lb)
-        y -= 3
-        c.setStrokeColor(bdc); c.line(40, y, 560, y)
-        y -= 12
-        c.setFont("Helvetica", 7)
-        for md in monthly_d:
-            c.setFillColor(wh)
-            vals = [
-                MO[md['month']-1],
-                fd(md['tts']),
-                fd(md['pre_org']),
-                fd(md['post_org']),
-                f"{md['org_yoy_pct']:+.0%}" if abs(md['org_yoy_pct']) < 100 else f"{md['org_yoy_pct']:+.0f}x",
-                fn(md['pre_pv']),
-                fn(md['post_pv']),
-                f"{md['pv_yoy_pct']:+.0%}" if abs(md['pv_yoy_pct']) < 100 else f"{md['pv_yoy_pct']:+.0f}x",
-                f"{md['ad_yoy_pct']:+.0%}" if abs(md['ad_yoy_pct']) < 100 else "N/A",
+# TAB 5: DEEP DIVE
+with tabs[4]:
+    sec("Brand Deep Dive")
+    brand_list_sorted = sorted(df['brand'].unique().tolist())
+    sel = st.selectbox("Select Brand", brand_list_sorted, key="deep_dive_brand_select")
+    if sel:
+        b = df[df['brand']==sel].iloc[0]
+        c1,c2 = st.columns([3,2])
+        with c1:
+            st.markdown(f"#### {sel} Monthly (2025)")
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=MO,y=b['tts_2025'],name='TTS GMV',marker=dict(color=CORAL,opacity=.75)))
+            fig.add_trace(go.Scatter(x=MO,y=b['amz_2025'],name='AMZ Sales',yaxis='y2',line=dict(color=BLU,width=2),marker=dict(size=3)))
+            fig.update_layout(yaxis2=dict(overlaying='y',side='right',gridcolor='rgba(0,0,0,0)',showline=False,tickprefix='$',tickformat=',.0s'))
+            fig.update_yaxes(tickprefix='$',tickformat=',.0s')
+            st.plotly_chart(pthem(fig,280),use_container_width=True)
+        with c2:
+            st.markdown(f"#### KPIs")
+            conf_color = CC.get(b['confidence'],T3)
+            mets = [
+                ("TTS GMV",fd(b['jan_tts']),T1),("AMZ Sales",fd(b['jan_amz']),BLU),
+                ("2025 TTS Total",fd(b['tts_total']),T1),("Active Mo.",str(b['active_months']),T1),
+                ("","",BD),
+                ("Correlation r",f"{b['r_best']:.3f}",conf_color),("Confidence",b['confidence'],conf_color),
+                ("Corr Rate",f"{b['corr_rate']*100:.0f}%",conf_color),
+                ("Corr Attributed",fd(b['corr_attr']),GRN),("Capped?","YES" if b['corr_capped'] else "NO",YEL if b['corr_capped'] else GRN),
+                ("","",BD),
+                ("Impressions",fn(b['impressions']),PUR),("Visitors",fn(b['visitors']),T1),
+                ("Funnel Path A",fd(b['path_a']),GRN),("Funnel Path B",fd(b['path_b']),GRN),
+                ("Funnel Attributed",fd(b['funnel_attr']),GRN),
+                ("Est. AMZ Visitors",fn(b['total_amz_vis']),BLU),
             ]
-            for i, v in enumerate(vals):
-                c.drawString(cols_x[i], y, v)
-            y -= 12
+            for lb,vl,co in mets:
+                if not lb: st.markdown(f"<div style='border-top:1px solid {BD};margin:6px 0;'></div>",unsafe_allow_html=True);continue
+                st.markdown(f'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid {BD};font:400 12px \'Inter\',monospace;"><span style="color:{T2}">{lb}</span><span style="color:{co};font-weight:700">{vl}</span></div>',unsafe_allow_html=True)
 
-        # Footer
-        c.setFillColor(t2c); c.setFont("Helvetica", 7)
-        c.drawString(40, 30, f"Pattern x NextWave | TTS → Amazon Lift Model v6 | {ml}")
+        st.markdown("#### Monthly Detail (2025)")
+        md = pd.DataFrame({'Month':MO,'TTS GMV':b['tts_2025'],'AMZ Sales':b['amz_2025'],'AMZ Organic':b['org_2025']})
+        md['Ad Sales'] = [a-o for a,o in zip(b['amz_2025'],b['org_2025'])]
+        st.dataframe(md.style.format({'TTS GMV':'${:,.0f}','AMZ Sales':'${:,.0f}','AMZ Organic':'${:,.0f}','Ad Sales':'${:,.0f}'}),use_container_width=True)
 
-        c.save()
-        buf.seek(0)
-        st.download_button(f"Download {pdf_brand} Report (PDF)", buf.getvalue(),
-                          f"{pdf_brand.replace(' ','_')}_lift_report.pdf", "application/pdf")
+        # ── PDF EXPORT ──
+        sec("Export Brand Report")
+        if st.button(f"📄 Download {sel} PDF Report", key="pdf_export_btn"):
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.units import inch
+            from reportlab.lib.colors import HexColor, white, black
+            from reportlab.pdfgen import canvas as pdf_canvas
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            from reportlab.lib.utils import ImageReader
 
-    sec("CSV Export")
-    ec = df[['brand','confidence','pv_signal','jan_tts','tts_total','jan_amz',
-             'total_org_pct','ad_spend_pct','attributed_lift','inc_pv','inc_units',
-             'lift_per_dollar','capped','tts_share','unexplained','ad_halo']].copy()
-    ec.columns = ['Brand','Confidence','PV Signal','TTS GMV (mo)','TTS Total','AMZ Sales',
-                  'Org YoY%','Ad Spend Δ%','Attributed Lift','Incr PVs','Incr Units',
-                  '$/TTS','Capped','TTS Share','Unexplained Org','Ad Halo']
-    csv_out = ec.to_csv(index=False)
-    st.download_button("Download Attribution Summary (CSV)", csv_out, "tts_lift_v6.csv", "text/csv")
+            pdf_buf = BytesIO()
+            c = pdf_canvas.Canvas(pdf_buf, pagesize=letter)
+            W, H = letter
+            margin = 50
 
-st.caption(f"Pattern x NextWave | TTS → Amazon Lift Model v6 | {ml} | {len(df)} brands")
+            # Colors
+            bg_color = HexColor('#0A0A0A')
+            surface = HexColor('#111111')
+            border = HexColor('#2A2A2A')
+            coral_pdf = HexColor('#FF6B35')
+            green_pdf = HexColor('#34D399')
+            blue_pdf = HexColor('#60A5FA')
+            purple_pdf = HexColor('#A78BFA')
+            text_w = white
+            text_g = HexColor('#9CA3AF')
+            conf_colors_pdf = {'HIGH':HexColor('#34D399'),'MED':HexColor('#FBBF24'),'LOW':HexColor('#FB923C'),'WEAK':HexColor('#EF4444'),'INSUF':HexColor('#4B5563')}
 
+            def draw_bg():
+                c.setFillColor(bg_color)
+                c.rect(0, 0, W, H, fill=1, stroke=0)
+
+            def chart_to_img(fig_func, cw=7, ch=2.5):
+                fig, ax = fig_func(cw, ch)
+                fig.patch.set_facecolor('#0A0A0A')
+                ax.set_facecolor('#0A0A0A')
+                ax.tick_params(colors='#9CA3AF', labelsize=7)
+                for spine in ax.spines.values(): spine.set_color('#2A2A2A')
+                buf2 = BytesIO()
+                fig.savefig(buf2, format='png', dpi=150, bbox_inches='tight', facecolor='#0A0A0A')
+                plt.close(fig)
+                buf2.seek(0)
+                return ImageReader(buf2)
+
+            # ═══ PAGE 1 ═══
+            draw_bg()
+            # Header bar
+            c.setFillColor(coral_pdf)
+            c.rect(0, H-60, W, 60, fill=1, stroke=0)
+            c.setFillColor(white)
+            c.setFont("Helvetica-Bold", 20)
+            c.drawString(margin, H-42, f"{sel} — TTS to Amazon Lift Report")
+            c.setFont("Helvetica", 10)
+            c.drawRightString(W-margin, H-42, f"{ml} | Pattern x NextWave")
+
+            # KPI boxes
+            y = H - 110
+            kpis_pdf = [
+                ("TTS GMV", fd(b['jan_tts'])),
+                ("AMZ Sales", fd(b['jan_amz'])),
+                ("Correlation r", f"{b['r_best']:.3f}"),
+                ("Confidence", b['confidence']),
+                ("Corr. Attributed", fd(b['corr_attr'])),
+                ("Funnel Attributed", fd(b['funnel_attr'])),
+            ]
+            box_w = (W - 2*margin - 5*12) / 6
+            for i, (label, value) in enumerate(kpis_pdf):
+                bx = margin + i*(box_w+12)
+                c.setFillColor(surface)
+                c.roundRect(bx, y, box_w, 55, 6, fill=1, stroke=0)
+                c.setFillColor(text_g)
+                c.setFont("Helvetica", 7)
+                c.drawString(bx+8, y+40, label.upper())
+                val_color = conf_colors_pdf.get(value, green_pdf) if label == "Confidence" else (green_pdf if label in ("Corr. Attributed","Funnel Attributed") else text_w)
+                c.setFillColor(val_color)
+                c.setFont("Helvetica-Bold", 14)
+                c.drawString(bx+8, y+12, str(value))
+
+            # Attribution detail
+            y -= 50
+            c.setFillColor(coral_pdf)
+            c.rect(margin, y, 3, 12, fill=1, stroke=0)
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(margin+10, y+2, "ATTRIBUTION DETAIL")
+
+            y -= 25
+            detail_rows = [
+                ("Correlation Rate", f"{b['corr_rate']*100:.0f}%"),
+                ("Corr. Type", b['r_type']),
+                ("GMV Cap Applied", "YES" if b['corr_capped'] else "NO"),
+                ("Active TTS Months", str(b['active_months'])),
+                ("2025 TTS Total", fd(b['tts_total'])),
+                ("Impressions", fn(b['impressions'])),
+                ("Visitors", fn(b['visitors'])),
+                ("Funnel Path A (visitors)", fd(b['path_a'])),
+                ("Funnel Path B (impressions)", fd(b['path_b'])),
+                ("Est. AMZ Visitors", fn(b['total_amz_vis'])),
+            ]
+            col1_rows = detail_rows[:5]
+            col2_rows = detail_rows[5:]
+            for ci, col_rows in enumerate([col1_rows, col2_rows]):
+                bx = margin + ci * ((W-2*margin)//2)
+                ry = y
+                for label, value in col_rows:
+                    c.setFillColor(text_g); c.setFont("Helvetica", 8)
+                    c.drawString(bx, ry, label)
+                    c.setFillColor(text_w); c.setFont("Helvetica-Bold", 8)
+                    c.drawString(bx+160, ry, str(value))
+                    ry -= 15
+
+            # TTS vs AMZ chart
+            def tts_amz_chart(cw, ch):
+                fig, ax = plt.subplots(figsize=(cw, ch))
+                x = np.arange(12)
+                ax.bar(x, b['tts_2025'], color='#FF6B35', alpha=0.75, label='TTS GMV', width=0.4)
+                ax2 = ax.twinx()
+                ax2.fill_between(x, b['amz_2025'], alpha=0.15, color='#60A5FA')
+                ax2.plot(x, b['amz_2025'], color='#60A5FA', linewidth=2, label='AMZ Sales')
+                ax2.plot(x, b['org_2025'], color='#34D399', linewidth=1.5, linestyle='--', label='AMZ Organic')
+                ax2.tick_params(colors='#9CA3AF', labelsize=7)
+                ax.set_xticks(x); ax.set_xticklabels(MO, fontsize=7)
+                ax.legend(loc='upper left', fontsize=6, facecolor='#0A0A0A', edgecolor='#2A2A2A', labelcolor='#9CA3AF')
+                ax2.legend(loc='upper right', fontsize=6, facecolor='#0A0A0A', edgecolor='#2A2A2A', labelcolor='#9CA3AF')
+                ax.set_title('TTS GMV vs Amazon Sales (2025)', color='white', fontsize=9, fontweight='bold', pad=8)
+                return fig, ax
+
+            img = chart_to_img(tts_amz_chart, 7, 2.5)
+            c.drawImage(img, 25, H-430, width=550, height=230, mask='auto')
+
+            # ═══ PAGE 2 ═══
+            c.showPage(); draw_bg()
+            c.setFillColor(coral_pdf); c.setFont("Helvetica-Bold", 8)
+            c.drawString(margin, H-35, "PATTERN x NEXTWAVE")
+            c.setFillColor(text_w); c.setFont("Helvetica-Bold", 16)
+            c.drawString(margin, H-55, f"{sel} — Monthly Detail")
+
+            # Monthly table
+            y = H-90
+            c.setFillColor(coral_pdf); c.rect(margin, y, 3, 12, fill=1, stroke=0)
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(margin+10, y+2, "MONTHLY DETAIL (2025)")
+
+            y -= 25
+            col_positions = [margin, margin+50, margin+140, margin+250, margin+360]
+            headers_t = ["Month", "TTS GMV", "AMZ Sales", "AMZ Organic", "Ad Sales"]
+            c.setFillColor(surface)
+            c.rect(margin-5, y-4, W-2*margin+10, 18, fill=1, stroke=0)
+            c.setFillColor(coral_pdf); c.setFont("Helvetica-Bold", 8)
+            for hi_idx, h in enumerate(headers_t):
+                c.drawString(col_positions[hi_idx], y, h)
+
+            y -= 18
+            for mi in range(12):
+                tts_v = b['tts_2025'][mi]
+                amz_v = b['amz_2025'][mi]
+                org_v = b['org_2025'][mi]
+                ad_v = amz_v - org_v
+                if mi % 2 == 0:
+                    c.setFillColor(HexColor('#0F0F0F'))
+                    c.rect(margin-5, y-4, W-2*margin+10, 16, fill=1, stroke=0)
+                c.setFillColor(text_g); c.setFont("Helvetica", 8)
+                c.drawString(col_positions[0], y, MO[mi])
+                c.setFillColor(text_w)
+                c.drawString(col_positions[1], y, fd(tts_v) if tts_v > 0 else "-")
+                c.drawString(col_positions[2], y, fd(amz_v) if amz_v > 0 else "-")
+                c.drawString(col_positions[3], y, fd(org_v) if org_v > 0 else "-")
+                c.drawString(col_positions[4], y, fd(ad_v) if ad_v != 0 else "-")
+                y -= 16
+
+            # Funnel summary
+            y -= 30
+            c.setFillColor(coral_pdf); c.rect(margin, y, 3, 12, fill=1, stroke=0)
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(margin+10, y+2, "FUNNEL MODEL SUMMARY")
+            y -= 20
+            funnel_rows = [
+                ("TTS Visitors", fn(b['visitors'])),
+                ("TTS Impressions", fn(b['impressions'])),
+                ("Path A — Non-buyer visitors → AMZ", fd(b['path_a'])),
+                ("Path B — Impression recall → AMZ", fd(b['path_b'])),
+                ("Total Funnel Attributed", fd(b['funnel_attr'])),
+                ("Est. Amazon Visitors from TTS", fn(b['total_amz_vis'])),
+            ]
+            for label, value in funnel_rows:
+                c.setFillColor(text_g); c.setFont("Helvetica", 8)
+                c.drawString(margin+10, y, label)
+                is_total = "Total" in label
+                c.setFillColor(green_pdf if is_total else text_w)
+                c.setFont("Helvetica-Bold", 9 if is_total else 8)
+                c.drawString(margin+250, y, value)
+                y -= 15
+
+            # Footer
+            c.setFillColor(text_g); c.setFont("Helvetica", 7)
+            c.drawString(margin, 30, f"Pattern x NextWave | TTS → Amazon Lift Model v5 | {ml} | Generated {datetime.now().strftime('%Y-%m-%d')}")
+            c.drawRightString(W-margin, 30, "Confidential — Internal Use Only")
+
+            c.save()
+            pdf_buf.seek(0)
+
+            st.download_button(
+                label=f"⬇️ Save {sel} Report PDF",
+                data=pdf_buf.getvalue(),
+                file_name=f"{sel.replace(' ','_')}_lift_report_{ml.replace(' ','_')}.pdf",
+                mime="application/pdf",
+                key="pdf_download_btn"
+            )
+
+# ═══════════════ EXPORT ═══════════════
+st.markdown("---"); sec("Export")
+ec = df[['brand','ps','jan_tts','tts_total','jan_amz','active_months','r_best','confidence','corr_rate','corr_attr','corr_capped','impressions','visitors','funnel_attr','path_a','path_b']].copy()
+ec.columns = ['Brand','Type',f'TTS GMV ({ml})','2025 TTS Total','AMZ Sales','Active Mo.','r','Confidence','Corr Rate','Corr Attributed','Capped','Impressions','Visitors','Funnel Attributed','Funnel Path A','Funnel Path B']
+csv_out = ec.to_csv(index=False)
+st.download_button("Download Attribution Summary (CSV)",csv_out,"tts_lift_attribution.csv","text/csv")
+st.caption(f"Pattern x NextWave | TTS → Amazon Lift Model v5 | {ml} | {len(df)} brands")
